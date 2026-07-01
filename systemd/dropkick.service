@@ -1,0 +1,15 @@
+[Unit]
+Description=Dropkick projectM visualizer
+After=graphical.target sound.target pipewire.service
+Wants=graphical.target
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.local/share/dropkick/dropkick.env
+EnvironmentFile=-%h/.local/share/dropkick/dropkick.local.env
+ExecStart=%h/.local/bin/projectMSDL
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=graphical-session.target
