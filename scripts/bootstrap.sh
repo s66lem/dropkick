@@ -9,7 +9,7 @@ DATA="$HOME/.local/share/dropkick"
 echo "== Installing build dependencies =="
 sudo apt-get update
 sudo apt-get install -y \
-  build-essential cmake git pkg-config \
+  build-essential cmake git pkg-config gettext-base \
   libsdl2-dev libgles2-mesa-dev libegl1-mesa-dev \
   libpoco-dev libglm-dev \
   libpipewire-0.3-dev
@@ -33,11 +33,12 @@ cmake --install "$ROOT/external/frontend-sdl-cpp/build"
 echo "== Installing config, remote assets, and preset/texture dirs =="
 mkdir -p "$DATA/presets/cream-of-the-crop" "$DATA/textures" "$DATA/remote"
 cp -f "$ROOT/remote/"* "$DATA/remote/"
-install -Dm644 "$ROOT/config/projectMSDL.properties" "$PREFIX/share/projectMSDL/projectMSDL.properties"
 # Runtime env file sourced by the systemd unit (do not clobber an existing edited copy).
 if [ ! -f "$DATA/dropkick.env" ]; then
   install -Dm644 "$ROOT/config/dropkick.env" "$DATA/dropkick.env"
 fi
+# Render projectMSDL.properties from dropkick.env (the config source of truth).
+"$ROOT/scripts/sync-config.sh"
 
 echo "== Done. =="
 echo "Add presets to $DATA/presets/<pack>/ and textures to $DATA/textures/."

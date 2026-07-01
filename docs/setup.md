@@ -16,9 +16,15 @@ Drop preset packs into subfolders:
     ~/.local/share/dropkick/textures/
 
 ## 3. Configure
-Edit `~/.local/share/dropkick/dropkick.env` (audio device, preset pack,
-remote port/token). Leave `DROPKICK_AUDIO_SOURCE` empty for the default device;
-list devices with `projectMSDL --listAudioDevices`.
+`~/.local/share/dropkick/dropkick.env` is the single source of truth. Edit it
+(audio device, preset pack, remote port/token), then render the app config and
+restart:
+
+    ./scripts/sync-config.sh
+    systemctl --user restart dropkick.service
+
+Leave `DROPKICK_AUDIO_SOURCE` empty for the default device; list devices with
+`projectMSDL --listAudioDevices`.
 
 ## 4. Enable on boot
     mkdir -p ~/.config/systemd/user
@@ -37,12 +43,13 @@ If a token is set (`remote.token` / `DROPKICK_REMOTE_TOKEN`), use
     ./scripts/build.sh
 
 ## Where configuration lives
-The app reads `projectMSDL.properties` (installed to
-`~/.local/share/projectMSDL/projectMSDL.properties` by `bootstrap.sh`). That
-file is the source of truth for `projectM.presetPath`, `projectM.texturePath`,
-`audio.device`, and the `remote.*` keys. If a key is absent the remote falls
-back to safe defaults (port 8080, no token, preset/web roots under
-`~/.local/share/dropkick`).
+You configure Dropkick in **`dropkick.env`**. `bootstrap.sh` and
+`sync-config.sh` render that into `projectMSDL.properties` (installed to
+`~/.local/share/projectMSDL/projectMSDL.properties`) via `envsubst` — this is
+the file the app actually reads. Never edit the rendered `.properties` directly;
+edit `dropkick.env` and re-run `sync-config.sh`. If a `remote.*` key is somehow
+absent, the remote falls back to safe defaults (port 8080, no token, preset/web
+roots under `~/.local/share/dropkick`).
 
 ## Notes / troubleshooting
 - **Wayland vs X11:** the service sets `DISPLAY=:0` for an X11 session. On a

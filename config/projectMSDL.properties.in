@@ -1,0 +1,24 @@
+# Dropkick frontend configuration TEMPLATE (Poco properties format).
+#
+# This is NOT read directly. bootstrap.sh / sync-config.sh render it with
+# `envsubst` from the values in dropkick.env, writing the result to
+# $PREFIX/share/projectMSDL/projectMSDL.properties. Edit dropkick.env, then
+# re-run scripts/sync-config.sh (and restart the service) to apply changes.
+#
+# Only the ${DROPKICK_*} placeholders below are substituted; any other
+# ${...} (e.g. Poco's ${application.dir}) is preserved verbatim.
+
+window.fullscreen = true
+projectM.presetPath = ${DROPKICK_PRESET_ROOT}/${DROPKICK_PRESET_PACK}
+projectM.texturePath = ${DROPKICK_TEXTURE_ROOT}
+projectM.shuffleEnabled = true
+projectM.presetLocked = false
+
+# Audio: empty = default/first capture device; any host capture device works.
+audio.device = ${DROPKICK_AUDIO_SOURCE}
+
+# Phone remote control
+remote.port = ${DROPKICK_REMOTE_PORT}
+remote.token = ${DROPKICK_REMOTE_TOKEN}
+remote.presetRoot = ${DROPKICK_PRESET_ROOT}
+remote.webRoot = ${DROPKICK_WEB_ROOT}
