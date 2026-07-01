@@ -1,0 +1,11 @@
+# Build artifacts
+build/
+*/build/
+install/
+# Editor
+.vscode/
+.idea/
+# Local overrides
+config/dropkick.local.env
+# SDD scratch
+.superpowers/
