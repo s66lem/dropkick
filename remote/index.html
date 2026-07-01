@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Dropkick Remote</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <h1>Dropkick</h1>
+    <p id="preset" class="preset">…</p>
+    <div class="grid">
+      <button data-action="prev">◀ Prev</button>
+      <button data-action="next">Next ▶</button>
+      <button data-action="random">🎲 Random</button>
+      <button id="shuffle" data-action="shuffle">Shuffle</button>
+      <button id="lock" data-action="lock">Lock</button>
+      <button data-action="audio/next">🎧 Audio</button>
+    </div>
+    <label for="packs">Preset pack</label>
+    <select id="packs"></select>
+    <p id="audio" class="audio"></p>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

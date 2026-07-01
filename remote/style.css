@@ -1,0 +1,14 @@
+:root { color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin: 0; font-family: system-ui, sans-serif; background: #0d0d12; color: #f2f2f7; }
+main { max-width: 480px; margin: 0 auto; padding: 1.2rem; }
+h1 { font-size: 1.4rem; letter-spacing: 0.06em; text-transform: uppercase; }
+.preset { min-height: 2.4em; font-size: 0.95rem; color: #9fe0c0; word-break: break-word; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin: 1rem 0; }
+button { padding: 1.1rem; font-size: 1.05rem; border: none; border-radius: 0.8rem;
+         background: #23233a; color: #f2f2f7; cursor: pointer; }
+button:active { background: #35355a; }
+button.on { background: #2f7d5b; }
+select { width: 100%; padding: 0.9rem; font-size: 1rem; border-radius: 0.8rem;
+         background: #23233a; color: #f2f2f7; border: none; }
+.audio { margin-top: 0.8rem; color: #8a8aa0; font-size: 0.85rem; }
