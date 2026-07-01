@@ -36,5 +36,22 @@ If a token is set (`remote.token` / `DROPKICK_REMOTE_TOKEN`), use
 ## Incremental rebuild after edits
     ./scripts/build.sh
 
+## Where configuration lives
+The app reads `projectMSDL.properties` (installed to
+`~/.local/share/projectMSDL/projectMSDL.properties` by `bootstrap.sh`). That
+file is the source of truth for `projectM.presetPath`, `projectM.texturePath`,
+`audio.device`, and the `remote.*` keys. If a key is absent the remote falls
+back to safe defaults (port 8080, no token, preset/web roots under
+`~/.local/share/dropkick`).
+
+## Notes / troubleshooting
+- **Wayland vs X11:** the service sets `DISPLAY=:0` for an X11 session. On a
+  Wayland desktop (Raspberry Pi OS Bookworm defaults to labwc/Wayland), SDL2 may
+  need `WAYLAND_DISPLAY=wayland-0` instead — set it in `dropkick.local.env` if
+  the window doesn't appear under the service. Launching `projectMSDL` manually
+  from the desktop session always uses the active display.
+- **Remote didn't start:** check `journalctl --user -u dropkick` for a
+  "failed to bind port" error (another process may hold the port).
+
 ## GLES patch rationale
 See `docs/patches.md`.
