@@ -97,7 +97,7 @@ private:
 
     // Workshop (preset authoring) — all render-thread only.
     std::string _workshopDir;
-    std::map<std::string, long> _workshopSeen; //!< file path -> last-seen mtime
+    std::map<std::string, long long> _workshopSeen; //!< file path -> last-seen mtime (filesystem clock ticks)
     bool _workshopSeeded{false};
     long _lastWorkshopPoll{0};
     bool _workshopActive{false};    //!< true while a workshop file is the live preset

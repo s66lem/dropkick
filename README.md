@@ -27,6 +27,12 @@ Launch it from the desktop menu (**Sound & Video → Dropkick**) or a terminal:
 dropkick
 ```
 
+### Other platforms
+Dropkick also builds on **Windows** (desktop OpenGL, from source) — see
+[docs/setup-windows.md](docs/setup-windows.md). macOS and non-Debian Linux aren't
+packaged yet but the code is portable (POSIX + `std::filesystem`); contributions
+welcome.
+
 ## Features
 
 - **Runs on the Pi 5's GPU.** Runtime GLES capability detection: the frontend

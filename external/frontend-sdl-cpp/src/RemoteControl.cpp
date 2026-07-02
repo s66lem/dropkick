@@ -16,12 +16,12 @@
 #include <algorithm>
 #include <cstdlib>
 #include <ctime>
-#include <dirent.h>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
-#include <sys/stat.h>
-#include <sys/types.h>
 #include <vector>
+
+namespace fs = std::filesystem;
 
 namespace
 {
@@ -264,7 +264,7 @@ void RemoteControl::RegisterRoutes()
     _server->Post("/api/workshop/apply", [this, guard](const httplib::Request& req, httplib::Response& res) {
         if (!guard(req, res)) { return; }
         std::string scratch = _workshopDir + "/_scratch.milk";
-        ::mkdir(_workshopDir.c_str(), 0755);
+        fs::create_directories(_workshopDir);
         std::ofstream out(scratch, std::ios::trunc | std::ios::binary);
         if (!out)
         {
@@ -292,7 +292,7 @@ void RemoteControl::RegisterRoutes()
         }
         if (name.size() < 5 || name.compare(name.size() - 5, 5, ".milk") != 0) { name += ".milk"; }
         std::string dest = _workshopDir + "/" + name;
-        ::mkdir(_workshopDir.c_str(), 0755);
+        fs::create_directories(_workshopDir);
         std::ofstream out(dest, std::ios::trunc | std::ios::binary);
         if (!out)
         {
@@ -505,20 +505,19 @@ void RemoteControl::PollWorkshop()
     if (now == _lastWorkshopPoll) { return; } // throttle to ~1 Hz
     _lastWorkshopPoll = now;
 
-    DIR* dir = opendir(_workshopDir.c_str());
-    if (!dir) { return; }
+    std::error_code ec;
+    if (!fs::is_directory(_workshopDir, ec)) { return; }
 
     std::string newest;
-    long newestMtime = 0;
-    struct dirent* entry;
-    while ((entry = readdir(dir)) != nullptr)
+    long long newestMtime = 0;
+    for (const auto& entry : fs::directory_iterator(_workshopDir, ec))
     {
-        std::string nm = entry->d_name;
-        if (nm.size() < 5 || nm.compare(nm.size() - 5, 5, ".milk") != 0) { continue; }
-        std::string full = _workshopDir + "/" + nm;
-        struct stat st{};
-        if (stat(full.c_str(), &st) != 0 || !S_ISREG(st.st_mode)) { continue; }
-        long mtime = static_cast<long>(st.st_mtime);
+        if (ec) { break; }
+        if (!entry.is_regular_file() || entry.path().extension() != ".milk") { continue; }
+        std::string full = entry.path().string();
+        long long mtime = 0;
+        auto t = fs::last_write_time(entry.path(), ec);
+        if (!ec) { mtime = t.time_since_epoch().count(); }
 
         auto it = _workshopSeen.find(full);
         bool changed = (it == _workshopSeen.end() || it->second != mtime);
@@ -529,7 +528,6 @@ void RemoteControl::PollWorkshop()
             newest = full;
         }
     }
-    closedir(dir);
 
     if (!_workshopSeeded)
     {
@@ -550,7 +548,7 @@ void RemoteControl::CaptureToWorkshop()
 {
     if (_currentPath.empty()) { return; }
 
-    ::mkdir(_workshopDir.c_str(), 0755); // no-op if it exists
+    fs::create_directories(_workshopDir);
 
     std::string base = _currentPath.substr(_currentPath.find_last_of('/') + 1);
     std::string stem = base;
@@ -559,9 +557,8 @@ void RemoteControl::CaptureToWorkshop()
     if (dot != std::string::npos) { stem = base.substr(0, dot); ext = ".milk"; }
 
     std::string dest = _workshopDir + "/" + stem + ext;
-    struct stat st{};
     int n = 1;
-    while (stat(dest.c_str(), &st) == 0)
+    while (fs::exists(dest))
     {
         dest = _workshopDir + "/" + stem + " (" + std::to_string(n++) + ")" + ext;
     }
@@ -577,8 +574,9 @@ void RemoteControl::CaptureToWorkshop()
     out.close();
 
     // Load the copy live and register it so the watcher doesn't reload it.
-    struct stat dst{};
-    if (stat(dest.c_str(), &dst) == 0) { _workshopSeen[dest] = static_cast<long>(dst.st_mtime); }
+    std::error_code ec;
+    auto t = fs::last_write_time(dest, ec);
+    if (!ec) { _workshopSeen[dest] = t.time_since_epoch().count(); }
     ProjectMSDLApplication::instance().getSubsystem<ProjectMWrapper>().LoadPresetFile(dest);
     _workshopActive = true;
     _workshopPath = dest;
@@ -712,25 +710,18 @@ std::string RemoteControl::PacksJson() const
 {
     std::ostringstream json;
     json << "[";
-    DIR* dir = opendir(_presetRoot.c_str());
+    std::error_code ec;
     bool first = true;
-    if (dir)
+    if (fs::is_directory(_presetRoot, ec))
     {
-        struct dirent* entry;
-        while ((entry = readdir(dir)) != nullptr)
+        for (const auto& entry : fs::directory_iterator(_presetRoot, ec))
         {
-            std::string entryName = entry->d_name;
-            if (entryName == "." || entryName == "..") { continue; }
-            std::string full = _presetRoot + "/" + entryName;
-            struct stat st{};
-            if (stat(full.c_str(), &st) == 0 && S_ISDIR(st.st_mode))
-            {
-                if (!first) { json << ","; }
-                json << "\"" << JsonEscape(entryName) << "\"";
-                first = false;
-            }
+            if (ec) { break; }
+            if (!entry.is_directory()) { continue; } // follows symlinks-to-dirs
+            if (!first) { json << ","; }
+            json << "\"" << JsonEscape(entry.path().filename().string()) << "\"";
+            first = false;
         }
-        closedir(dir);
     }
     json << "]";
     return json.str();

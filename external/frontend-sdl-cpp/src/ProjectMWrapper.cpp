@@ -15,8 +15,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
-#include <sys/stat.h>
 #include <vector>
 
 const char* ProjectMWrapper::name() const
@@ -358,8 +358,8 @@ void ProjectMWrapper::ApplyBlocklist()
 void ProjectMWrapper::WriteBreadcrumb(const std::string& path)
 {
     if (path.empty()) { return; }
-    Poco::Path p(_breadcrumbPath);
-    ::mkdir(p.parent().toString().c_str(), 0755); // ensure state dir exists (no-op if present)
+    std::error_code ec;
+    std::filesystem::create_directories(std::filesystem::path(_breadcrumbPath).parent_path(), ec); // no-op if present
     std::ofstream out(_breadcrumbPath, std::ios::trunc);
     if (out) { out << path; }
 }
