@@ -72,5 +72,17 @@ path, next to the prefix, NOT under `share/`). Never edit the rendered
 - **Remote didn't start:** check `journalctl --user -u dropkick` for a
   "failed to bind port" error (another process may hold the port).
 
+## Robustness: watchdog + blocklist scan
+Some shader-heavy presets can hard-hang the Pi's GPU (locks up the whole board).
+To recover automatically and learn which presets to avoid:
+
+    bash ~/dropkick/scripts/enable-watchdog.sh   # sudo: auto-reboot on lockup + start on boot
+
+Then run the accurate scan: from the remote's Settings, set **Preset duration** low
+(e.g. 3s) so it cycles quickly. When it hits a hard-hanger the watchdog reboots the
+Pi, the offending preset is quarantined on the next boot, and it resumes — over a few
+hours the blocklist self-populates. Set the duration back up when the blocked count
+stops climbing. Undo the blocklist anytime via Settings → Blocked presets → Clear.
+
 ## GLES patch rationale
 See `docs/patches.md`.

@@ -126,3 +126,28 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:26px;heigh
 .tab svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.8}
 .tab.on{color:var(--ink);border-top-color:var(--orange)}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* Tablet / desktop: wider, roomier, multi-column lists. */
+@media (min-width:700px){
+  .app{max-width:760px;padding:24px 24px calc(96px + env(safe-area-inset-bottom))}
+  .brand{font-size:19px}
+  .pname{font-size:32px}
+  .panel{margin-top:22px}
+  .screen{padding:26px 22px}
+  .key{padding:26px 0}
+  /* Two-column preset/favorite lists; headers span the full width. */
+  #browseList,#favList{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:start}
+  #browseList .chead,#favList .chead,#favList .hint,#browseList .hint{grid-column:1 / -1}
+  .row{margin-bottom:0}
+  /* Settings in two columns to use the width. */
+  section[data-view="set"]{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}
+  section[data-view="set"] .set{margin-top:0}
+  .tabs{max-width:760px;border-radius:0}
+  #edText{font-size:14px;padding:20px 28px}
+  .editor-head{padding:16px 24px}
+}
+@media (min-width:1024px){
+  .app{max-width:920px}
+  .tabs{max-width:920px}
+  #browseList,#favList{grid-template-columns:1fr 1fr 1fr}
+}
