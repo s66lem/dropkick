@@ -46,6 +46,13 @@ fi
 # Install the launcher wrapper (sets LD_LIBRARY_PATH + display env, sources env).
 install -Dm755 "$ROOT/scripts/dropkick-launcher.sh" "$PREFIX/bin/dropkick"
 
+# Install the desktop menu entry (appears under Sound & Video). Reuses the
+# projectMSDL icon installed by the frontend build.
+mkdir -p "$HOME/.local/share/applications"
+sed "s#__DROPKICK_BIN__#$PREFIX/bin/dropkick#g" "$ROOT/share/dropkick.desktop.in" \
+  > "$HOME/.local/share/applications/dropkick.desktop"
+update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
+
 echo "== Done. =="
 echo "Add presets to $DATA/presets/<pack>/ and textures to $DATA/textures/."
 echo "Start: dropkick    (or $PREFIX/bin/dropkick)   |   Remote: http://<pi-ip>:${DROPKICK_REMOTE_PORT:-8080}"

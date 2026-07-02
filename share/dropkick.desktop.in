@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Dropkick
+GenericName=Music Visualizer
+Comment=projectM audio visualizer with phone remote control
+Icon=projectMSDL
+TryExec=__DROPKICK_BIN__
+Exec=__DROPKICK_BIN__
+Terminal=false
+Categories=AudioVideo;Audio;Video;
+Keywords=music;visualizer;milkdrop;projectm;audio;
+StartupWMClass=projectMSDL

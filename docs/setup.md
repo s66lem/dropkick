@@ -50,6 +50,10 @@ If a token is set (`remote.token` / `DROPKICK_REMOTE_TOKEN`), use
 It sets `LD_LIBRARY_PATH` (libprojectM lives under `~/.local/lib`) and sensible
 display defaults, then execs `projectMSDL`.
 
+It also installs a **Dropkick** menu entry under **Sound & Video** (the desktop
+menu), so you can launch it like the stock projectM. The entry runs the same
+wrapper.
+
 ## Where configuration lives
 You configure Dropkick in **`dropkick.env`**. `bootstrap.sh` and
 `sync-config.sh` render that into `~/.local/projectMSDL.properties` via
