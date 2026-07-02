@@ -1,6 +1,0 @@
-[submodule "external/projectm"]
-	path = external/projectm
-	url = https://github.com/s66lem/dropkick-projectm.git
-[submodule "external/frontend-sdl-cpp"]
-	path = external/frontend-sdl-cpp
-	url = https://github.com/s66lem/dropkick-frontend.git

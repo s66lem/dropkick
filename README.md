@@ -5,8 +5,13 @@ support, preset-pack management, and phone remote control.
 
 See `docs/setup.md` for build and install instructions.
 
+## Install (Raspberry Pi 5)
+
+    git clone https://github.com/s66lem/dropkick.git
+    cd dropkick && ./scripts/bootstrap.sh
+
 ## Layout
-- `external/` — patched forks (submodules): libprojectM + projectMSDL frontend
+- `external/` — vendored, patched libprojectM + projectMSDL frontend (single repo, no submodules)
 - `patches/` — exported documentation patches
 - `remote/` — mobile remote web page
 - `scripts/` — bootstrap & build

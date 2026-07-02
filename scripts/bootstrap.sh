@@ -14,9 +14,6 @@ sudo apt-get install -y \
   libpoco-dev libglm-dev \
   libpipewire-0.3-dev
 
-echo "== Initializing submodules =="
-git -C "$ROOT" submodule update --init --recursive
-
 echo "== Building libprojectM (GLES) =="
 cmake -S "$ROOT/external/projectm" -B "$ROOT/external/projectm/build" \
   -DENABLE_GLES=TRUE -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$PREFIX" \

@@ -1,11 +1,12 @@
 # Dropkick Setup (Raspberry Pi 5)
 
 ## 1. Clone and bootstrap
-    git clone --recurse-submodules https://github.com/s66lem/dropkick.git
+    git clone https://github.com/s66lem/dropkick.git
     cd dropkick
     ./scripts/bootstrap.sh
 
-This installs dependencies, builds both forks with `-DENABLE_GLES=TRUE`, and
+Everything is vendored in one repo (no submodules). This installs dependencies,
+builds the bundled libprojectM + frontend with `-DENABLE_GLES=TRUE`, and
 installs the binary, remote web assets, config, and preset/texture dirs. It also
 drops a `dropkick.env` into `~/.local/share/dropkick/` (only if one isn't there).
 

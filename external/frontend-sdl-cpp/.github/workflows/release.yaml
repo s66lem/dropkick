@@ -1,0 +1,55 @@
+# Unified release workflow
+# Triggers on version tags, builds all platforms, and creates a GitHub release
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-linux:
+    name: Build Linux
+    uses: ./.github/workflows/release-linux.yaml
+
+  build-windows:
+    name: Build Windows
+    uses: ./.github/workflows/release-windows.yaml
+
+  build-macos:
+    name: Build macOS
+    uses: ./.github/workflows/release-macos.yaml
+    secrets:
+      MACOS_CERTIFICATE_APPLICATION: ${{ secrets.MACOS_CERTIFICATE_APPLICATION }}
+      MACOS_CERTIFICATE_INSTALLER: ${{ secrets.MACOS_CERTIFICATE_INSTALLER }}
+      MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+      MACOS_NOTARY_API_KEY: ${{ secrets.MACOS_NOTARY_API_KEY }}
+      MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+      MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+
+  create-release:
+    name: Create Release
+    needs: [build-linux, build-windows, build-macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display artifacts
+        run: ls -R artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            artifacts/**/*.pkg
+            artifacts/**/*.deb
+            artifacts/**/*.tar.gz
+            artifacts/**/*.zip
+            artifacts/**/*.msi

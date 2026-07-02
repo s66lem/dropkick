@@ -1,0 +1,31 @@
+From 0cc0690f400f801b01c1f6d48254b87b97d92cea Mon Sep 17 00:00:00 2001
+From: s66lem <sqlem@iastate.edu>
+Date: Wed, 1 Jul 2026 17:51:04 -0500
+Subject: [PATCH] gles: lower minimum GLES acceptance floor to 3.1 / GLSL ES
+ 3.10
+
+The Raspberry Pi 5 Mesa V3D driver caps at OpenGL ES 3.1 / GLSL ES 3.10.
+This is an acceptance floor, not a version request: libprojectM now accepts
+any context >= 3.1 rather than rejecting the 3.1 context the frontend creates.
+---
+ src/libprojectM/Renderer/Platform/GladLoader.cpp | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/libprojectM/Renderer/Platform/GladLoader.cpp b/src/libprojectM/Renderer/Platform/GladLoader.cpp
+index 0cb30ae4..2d624275 100644
+--- a/src/libprojectM/Renderer/Platform/GladLoader.cpp
++++ b/src/libprojectM/Renderer/Platform/GladLoader.cpp
+@@ -47,8 +47,8 @@ auto GladLoader::CheckGLRequirements() -> bool
+ 
+     glCheck
+         .WithApi(GLApi::OpenGLES)
+-        .WithMinimumVersion(3, 2)
+-        .WithMinimumShaderLanguageVersion(3, 20)
++        .WithMinimumVersion(3, 1)
++        .WithMinimumShaderLanguageVersion(3, 10)
+         //        .WithRequiredExtension("GL_OES_texture_float")
+         //        .WithRequiredExtension("GL_OES_standard_derivatives")
+         .WithRequireCoreProfile(false);
+-- 
+2.45.1.windows.1
+

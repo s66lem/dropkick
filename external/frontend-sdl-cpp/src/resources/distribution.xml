@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+    <title>projectM</title>
+    <organization>org.projectm-visualizer</organization>
+    <welcome file="macos-welcome.txt"/>
+    <readme file="macos-readme.txt"/>
+    <license file="gpl-3.0.rtf"/>
+    <options customize="never" require-scripts="false" hostArchitectures="x86_64,arm64"/>
+    <domains enable_anywhere="false" enable_currentUserHome="false" enable_localSystem="true"/>
+    <choices-outline>
+        <line choice="default"/>
+    </choices-outline>
+    <choice id="default" title="projectM">
+        <pkg-ref id="org.projectm-visualizer.projectmsdl"/>
+    </choice>
+    <pkg-ref id="org.projectm-visualizer.projectmsdl" version="0" onConclusion="none">projectMSDL-component.pkg</pkg-ref>
+</installer-gui-script>
