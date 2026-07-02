@@ -5,8 +5,6 @@ visualizer for the **Raspberry Pi 5**, with GLES 3.1 support, organized preset
 packs, and full phone/tablet remote control — including an in-browser preset
 editor. Built to run on a TV over HDMI and be driven from the couch.
 
-Everything lives in one repo (libprojectM and the SDL frontend are vendored and
-patched in `external/`), so install is two commands.
 
 ## Install
 
@@ -21,7 +19,7 @@ cd dropkick && ./scripts/bootstrap.sh
 with `-DENABLE_GLES=TRUE`, installs the `dropkick` launcher and a **Sound & Video**
 menu entry, and creates the preset/texture/workshop directories.
 
-Launch it from the desktop menu (**Sound & Video → Dropkick**) or a terminal:
+To Launch:
 
 ```bash
 dropkick
