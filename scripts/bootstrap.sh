@@ -34,7 +34,7 @@ cmake --build "$ROOT/external/frontend-sdl-cpp/build" -j"$(nproc)"
 cmake --install "$ROOT/external/frontend-sdl-cpp/build"
 
 echo "== Installing config, remote assets, and preset/texture dirs =="
-mkdir -p "$DATA/presets/cream-of-the-crop" "$DATA/textures" "$DATA/remote" "$DATA/workshop"
+mkdir -p "$DATA/presets/cream-of-the-crop" "$DATA/textures" "$DATA/remote" "$DATA/workshop" "$DATA/state"
 cp -f "$ROOT/remote/"* "$DATA/remote/"
 # Seed a starter preset for the workshop (don't clobber the user's edits).
 if [ ! -f "$DATA/workshop/starter.milk" ]; then

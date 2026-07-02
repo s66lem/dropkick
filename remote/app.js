@@ -136,6 +136,9 @@ async function refresh() {
     $("favShuffle").classList.toggle("on", !!s.favoritesShuffle);
     $("nowLabel").textContent = s.workshop ? "WORKSHOP · LIVE EDIT" : "NOW PLAYING";
     $("nowLabel").classList.toggle("editing", !!s.workshop);
+    const blocked = s.blocked || 0;
+    $("blockedRow").style.display = blocked > 0 ? "" : "none";
+    $("blockedCount").textContent = blocked;
   } catch (e) { /* transient */ }
 }
 
@@ -161,6 +164,7 @@ $("btnCapture").onclick = async () => {
   setTimeout(refresh, 500);
 };
 $("btnAudio").onclick = () => { POST("/api/audio/next"); setTimeout(refresh, 600); };
+$("btnClearBlock").onclick = () => { POST("/api/blocklist/clear"); setTimeout(refresh, 500); };
 
 /* ---------- settings ---------- */
 const fmt1 = (n) => Math.round(n * 100) / 100;
