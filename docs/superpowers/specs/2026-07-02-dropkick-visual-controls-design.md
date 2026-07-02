@@ -27,8 +27,9 @@ vec3 prev     = texture(uPrev,  vUV).rgb;
 vec3 smoothed = mix(scene, prev, uPersistence);   // strobe reduction
 vec3 c        = smoothed * uBrightness;            // brightness
 if (uTintEnabled > 0.5) {
-    float lum = dot(c, vec3(0.2126, 0.7152, 0.0722));
-    c = lum * uTintColor;                          // true monochrome
+    float lum  = dot(c, vec3(0.2126, 0.7152, 0.0722));
+    vec3  mono = lum * uTintColor;                 // true monochrome
+    c = mix(c, mono, uTintStrength);               // intensity: 0 = original, 1 = full monochrome
 }
 frag = vec4(c, 1.0);
 ```
@@ -44,7 +45,8 @@ _post.SetReduceFlashing(cfg->getBool("projectM.reduceFlashing", false));
 _post.SetStrength(cfg->getDouble("projectM.flashStrength", 0.6));
 _post.SetBrightness(cfg->getDouble("projectM.brightness", 1.0));
 _post.SetTint(cfg->getBool("projectM.tintEnabled", false),
-              cfg->getString("projectM.tintColor", "#00ff00"));
+              cfg->getString("projectM.tintColor", "#00ff00"),
+              cfg->getDouble("projectM.tintStrength", 1.0));
 if (_post.Active()) { _post.Begin(w, h); RenderFrame(_post.SceneFbo()); _post.Composite(); }
 else                { RenderFrame(); }
 ```
@@ -73,9 +75,9 @@ The existing "Reduce flashing" toggle and strength slider in the remote drive th
 
 ## Feature 3 — Monochrome tint
 
-- **Config:** `projectM.tintEnabled` (bool, default false) and `projectM.tintColor` (hex string, default `#00ff00`).
-- **Render:** collapse the pixel to Rec. 709 luminance, then scale the chosen color by it → true monochrome (shades of one hue). Enabling activates the pass.
-- **Remote:** in Settings — an on/off toggle, a native `<input type="color">` picker, and quick swatches: green, blue, pink, amber, cyan, red, white, plus "off". Selecting a swatch sets both the color and the toggle.
+- **Config:** `projectM.tintEnabled` (bool, default false), `projectM.tintColor` (hex string, default `#00ff00`), and `projectM.tintStrength` (float 0.0–1.0, default 1.0).
+- **Render:** collapse the pixel to Rec. 709 luminance, scale the chosen color by it → monochrome, then `mix()` between the original and the monochrome by the intensity. At 1.0 the screen is pure single-hue; at lower values the preset's own colors bleed back in. Enabling activates the pass.
+- **Remote:** in Settings — an on/off toggle, a native `<input type="color">` picker, an intensity slider (0–100%), and quick swatches: green, blue, pink, amber, cyan, red, white, plus "off". Selecting a swatch sets both the color and the toggle.
 
 ## Feature 4 — Dislike button (separate list)
 
@@ -121,7 +123,7 @@ Skip presets that render too slowly; presets that are *repeatedly* slow get bloc
 ## Config & remote plumbing (shared)
 
 All new settings are runtime-adjustable from the remote, matching the existing settings path:
-- `RemoteControl::ApplySetting` handles the new keys — `brightness`, `tintEnabled`, `tintColor`, `autoskipEnabled`, `autoskipFps`, `autoskipStrikes` — by writing the corresponding `projectM.*` key into `UserConfiguration()` (live, in-memory apply, same as `reduceFlashing`/`flashStrength`/`fps`).
+- `RemoteControl::ApplySetting` handles the new keys — `brightness`, `tintEnabled`, `tintColor`, `tintStrength`, `autoskipEnabled`, `autoskipFps`, `autoskipStrikes` — by writing the corresponding `projectM.*` key into `UserConfiguration()` (live, in-memory apply, same as `reduceFlashing`/`flashStrength`/`fps`).
 - Each new key is added to the `kKeys` allow-set in the `POST /api/settings` handler.
 - The settings snapshot in `PublishStatus` reports each new key so the remote reflects current state.
 - Boot defaults for the new `projectM.*` keys are added to `dropkick.env` and the `projectMSDL.properties` template so a fresh install starts sane (`brightness=1`, tint off, autoskip on/20/3).
@@ -129,7 +131,6 @@ All new settings are runtime-adjustable from the remote, matching the existing s
 ## Non-goals (YAGNI)
 
 - No per-preset brightness/tint memory — these are global screen settings.
-- No tint intensity/mix slider — tint is full monochrome when on (can be added later if wanted).
 - No un-dislike-from-history UI — Clear wipes the whole dislike list, mirroring the blocklist's Clear.
 - No new on-TV keybindings for these (remote-driven), except where trivial to add alongside existing keys.
 
