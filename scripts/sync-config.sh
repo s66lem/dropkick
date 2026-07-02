@@ -14,7 +14,9 @@ set -a
 set +a
 
 PREFIX="${DROPKICK_PREFIX:-$HOME/.local}"
-DEST="$PREFIX/share/projectMSDL/projectMSDL.properties"
+# The frontend loads <prefix>/projectMSDL.properties (Poco's DEFAULT_CONFIG_PATH),
+# NOT <prefix>/share/projectMSDL/. Write it where the app actually reads it.
+DEST="$PREFIX/projectMSDL.properties"
 
 # Only substitute the DROPKICK_* placeholders; leave any Poco ${...} intact.
 VARS='$DROPKICK_PRESET_ROOT $DROPKICK_PRESET_PACK $DROPKICK_TEXTURE_ROOT $DROPKICK_AUDIO_SOURCE $DROPKICK_REMOTE_PORT $DROPKICK_REMOTE_TOKEN $DROPKICK_WEB_ROOT'

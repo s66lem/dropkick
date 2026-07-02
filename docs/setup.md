@@ -42,14 +42,22 @@ If a token is set (`remote.token` / `DROPKICK_REMOTE_TOKEN`), use
 ## Incremental rebuild after edits
     ./scripts/build.sh
 
+## Launching
+`bootstrap.sh` installs a `dropkick` launcher on your PATH. Just run:
+
+    dropkick
+
+It sets `LD_LIBRARY_PATH` (libprojectM lives under `~/.local/lib`) and sensible
+display defaults, then execs `projectMSDL`.
+
 ## Where configuration lives
 You configure Dropkick in **`dropkick.env`**. `bootstrap.sh` and
-`sync-config.sh` render that into `projectMSDL.properties` (installed to
-`~/.local/share/projectMSDL/projectMSDL.properties`) via `envsubst` — this is
-the file the app actually reads. Never edit the rendered `.properties` directly;
-edit `dropkick.env` and re-run `sync-config.sh`. If a `remote.*` key is somehow
-absent, the remote falls back to safe defaults (port 8080, no token, preset/web
-roots under `~/.local/share/dropkick`).
+`sync-config.sh` render that into `~/.local/projectMSDL.properties` via
+`envsubst` — this is the file the app actually reads (Poco's default config
+path, next to the prefix, NOT under `share/`). Never edit the rendered
+`.properties` directly; edit `dropkick.env` and re-run `sync-config.sh`. If a
+`remote.*` key is somehow absent, the remote falls back to safe defaults (port
+8080, no token, preset/web roots under `~/.local/share/dropkick`).
 
 ## Notes / troubleshooting
 - **Wayland vs X11:** the service sets `DISPLAY=:0` for an X11 session. On a

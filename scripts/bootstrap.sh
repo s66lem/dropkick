@@ -19,14 +19,17 @@ git -C "$ROOT" submodule update --init --recursive
 
 echo "== Building libprojectM (GLES) =="
 cmake -S "$ROOT/external/projectm" -B "$ROOT/external/projectm/build" \
-  -DENABLE_GLES=TRUE -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$PREFIX"
+  -DENABLE_GLES=TRUE -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$PREFIX" \
+  -DCMAKE_INSTALL_RPATH="$PREFIX/lib" -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=TRUE
 cmake --build "$ROOT/external/projectm/build" -j"$(nproc)"
 cmake --install "$ROOT/external/projectm/build"
 
 echo "== Building frontend (GLES) =="
+# RPATH so projectMSDL finds libprojectM under $PREFIX/lib without LD_LIBRARY_PATH.
 cmake -S "$ROOT/external/frontend-sdl-cpp" -B "$ROOT/external/frontend-sdl-cpp/build" \
   -DENABLE_GLES=TRUE -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_PREFIX_PATH="$PREFIX" -DCMAKE_INSTALL_PREFIX="$PREFIX"
+  -DCMAKE_PREFIX_PATH="$PREFIX" -DCMAKE_INSTALL_PREFIX="$PREFIX" \
+  -DCMAKE_INSTALL_RPATH="$PREFIX/lib" -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=TRUE
 cmake --build "$ROOT/external/frontend-sdl-cpp/build" -j"$(nproc)"
 cmake --install "$ROOT/external/frontend-sdl-cpp/build"
 
@@ -40,6 +43,9 @@ fi
 # Render projectMSDL.properties from dropkick.env (the config source of truth).
 "$ROOT/scripts/sync-config.sh"
 
+# Install the launcher wrapper (sets LD_LIBRARY_PATH + display env, sources env).
+install -Dm755 "$ROOT/scripts/dropkick-launcher.sh" "$PREFIX/bin/dropkick"
+
 echo "== Done. =="
 echo "Add presets to $DATA/presets/<pack>/ and textures to $DATA/textures/."
-echo "Start: $PREFIX/bin/projectMSDL   |   Remote: http://<pi-ip>:${DROPKICK_REMOTE_PORT:-8080}"
+echo "Start: dropkick    (or $PREFIX/bin/dropkick)   |   Remote: http://<pi-ip>:${DROPKICK_REMOTE_PORT:-8080}"

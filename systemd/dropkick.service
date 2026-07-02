@@ -7,7 +7,9 @@ Wants=graphical.target
 Type=simple
 EnvironmentFile=%h/.local/share/dropkick/dropkick.env
 EnvironmentFile=-%h/.local/share/dropkick/dropkick.local.env
-ExecStart=%h/.local/bin/projectMSDL
+# Launch via the wrapper so LD_LIBRARY_PATH (libprojectM under ~/.local/lib) and
+# the display env are set even if the graphical session didn't export them.
+ExecStart=%h/.local/bin/dropkick
 Restart=on-failure
 RestartSec=3
 
