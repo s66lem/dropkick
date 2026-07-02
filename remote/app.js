@@ -134,6 +134,8 @@ async function refresh() {
     $("tLock").classList.toggle("on", !!s.locked);
     $("tFav").classList.toggle("on", !!s.favorited);
     $("favShuffle").classList.toggle("on", !!s.favoritesShuffle);
+    $("nowLabel").textContent = s.workshop ? "WORKSHOP · LIVE EDIT" : "NOW PLAYING";
+    $("nowLabel").classList.toggle("editing", !!s.workshop);
   } catch (e) { /* transient */ }
 }
 
@@ -150,6 +152,14 @@ $("tFav").onclick = async () => {
   refresh();
 };
 $("favShuffle").onclick = () => { POST("/api/favorites/shuffle"); setTimeout(refresh, 300); };
+$("btnCapture").onclick = async () => {
+  const b = $("btnCapture");
+  await POST("/api/workshop/capture");
+  b.textContent = "✎ Copied to workshop/ — edit & save to hot-reload";
+  b.classList.add("done");
+  setTimeout(() => { b.textContent = "✎ Edit this preset in Workshop"; b.classList.remove("done"); }, 4000);
+  setTimeout(refresh, 500);
+};
 $("btnAudio").onclick = () => { POST("/api/audio/next"); setTimeout(refresh, 600); };
 
 /* ---------- settings ---------- */

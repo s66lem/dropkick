@@ -34,8 +34,12 @@ cmake --build "$ROOT/external/frontend-sdl-cpp/build" -j"$(nproc)"
 cmake --install "$ROOT/external/frontend-sdl-cpp/build"
 
 echo "== Installing config, remote assets, and preset/texture dirs =="
-mkdir -p "$DATA/presets/cream-of-the-crop" "$DATA/textures" "$DATA/remote"
+mkdir -p "$DATA/presets/cream-of-the-crop" "$DATA/textures" "$DATA/remote" "$DATA/workshop"
 cp -f "$ROOT/remote/"* "$DATA/remote/"
+# Seed a starter preset for the workshop (don't clobber the user's edits).
+if [ ! -f "$DATA/workshop/starter.milk" ]; then
+  install -Dm644 "$ROOT/share/starter.milk" "$DATA/workshop/starter.milk"
+fi
 # Runtime env file sourced by the systemd unit (do not clobber an existing edited copy).
 if [ ! -f "$DATA/dropkick.env" ]; then
   install -Dm644 "$ROOT/config/dropkick.env" "$DATA/dropkick.env"

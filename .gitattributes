@@ -6,4 +6,5 @@
 *.env           text eol=lf
 *.properties    text eol=lf
 *.in            text eol=lf
+*.milk          text eol=lf
 dropkick.env    text eol=lf

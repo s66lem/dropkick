@@ -22,7 +22,7 @@
   <!-- NOW -->
   <section class="view on" data-view="now">
     <div class="panel">
-      <div class="phead"><span class="n">NOW PLAYING</span><span class="n" id="pos">— / —</span></div>
+      <div class="phead"><span class="n" id="nowLabel">NOW PLAYING</span><span class="n" id="pos">— / —</span></div>
       <div class="screen" id="screen">
         <div class="idx" id="posIdx">▸ POS —</div>
         <div class="pname" id="pname">—</div>
@@ -33,6 +33,9 @@
         <button class="key" id="btnPrev"><svg viewBox="0 0 24 24"><path d="M18 6v12L9 12zM7 6v12"/></svg><span class="k">Prev</span></button>
         <button class="key accent" id="btnNext"><svg viewBox="0 0 24 24"><path d="M6 6l12 6-12 6z"/></svg><span class="k">Next</span></button>
         <button class="key accent" id="btnRandom"><svg viewBox="0 0 24 24"><path d="M4 7h4l8 10h4M14 7h6M4 17h4l3-4"/></svg><span class="k">Random</span></button>
+      </div>
+      <div class="workshoprow">
+        <button class="wsbtn" id="btnCapture">✎ Edit this preset in Workshop</button>
       </div>
       <div class="toggles">
         <button class="tk" id="tShuffle"><span class="lamp"></span><span class="k">Shuffle</span></button>
