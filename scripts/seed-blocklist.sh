@@ -45,7 +45,7 @@ while IFS= read -r -d '' f; do
       newly=$((newly + 1))
     fi
   fi
-done < <(find "$ROOT" -type f -iname '*.milk' -print0)
+done < <(find -L "$ROOT" -type f -iname '*.milk' -print0)
 
 echo "Scanned $total presets; $flagged match the heuristic ($newly new)."
 
