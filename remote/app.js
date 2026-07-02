@@ -139,6 +139,9 @@ async function refresh() {
     const blocked = s.blocked || 0;
     $("blockedRow").style.display = blocked > 0 ? "" : "none";
     $("blockedCount").textContent = blocked;
+    const disliked = s.disliked || 0;
+    $("dislikedRow").style.display = disliked > 0 ? "" : "none";
+    $("dislikedCount").textContent = disliked;
     // System monitor
     if (s.fps !== undefined) $("stFps").textContent = s.fps;
     if (s.cpu !== undefined) $("stCpu").textContent = s.cpu;
@@ -189,6 +192,8 @@ $("edApply").onclick = applyEdit;
 $("edSave").onclick = saveEdit;
 $("btnAudio").onclick = () => { POST("/api/audio/next"); setTimeout(refresh, 600); };
 $("btnClearBlock").onclick = () => { POST("/api/blocklist/clear"); setTimeout(refresh, 500); };
+$("btnDislike").onclick = () => { POST("/api/dislike"); setTimeout(refresh, 500); };
+$("btnClearDislikes").onclick = () => { POST("/api/dislikes/clear"); setTimeout(refresh, 500); };
 
 /* ---------- settings ---------- */
 const fmt1 = (n) => Math.round(n * 100) / 100;
@@ -205,11 +210,25 @@ async function loadSettings() {
     $("tAspect").classList.toggle("on", !!s.aspectCorrection);
     $("sFlash").value = s.flashStrength; $("vFlash").textContent = fmt1(s.flashStrength);
     $("tFlash").classList.toggle("on", !!s.reduceFlashing);
+    $("sBright").value = s.brightness; $("vBright").textContent = Math.round(s.brightness * 100);
+    $("tTint").classList.toggle("on", !!s.tintEnabled);
+    const tc = s.tintColor || "#00ff00";
+    $("tintColor").value = tc.charAt(0) === "#" ? tc : "#" + tc; // input[type=color] needs #rrggbb
+    $("sTintS").value = s.tintStrength; $("vTintS").textContent = Math.round(s.tintStrength * 100);
+    $("tAutoskip").classList.toggle("on", !!s.autoskipEnabled);
+    $("sAskFps").value = s.autoskipFps; $("vAskFps").textContent = s.autoskipFps;
+    $("sAskStr").value = s.autoskipStrikes; $("vAskStr").textContent = s.autoskipStrikes;
   } catch (e) {}
 }
-const valueLabel = { sDur: "vDur", sSoft: "vSoft", sBeat: "vBeat", sHardS: "vHardS", sHardD: "vHardD", sFps: "vFps", sFlash: "vFlash" };
+const valueLabel = { sDur: "vDur", sSoft: "vSoft", sBeat: "vBeat", sHardS: "vHardS", sHardD: "vHardD", sFps: "vFps", sFlash: "vFlash", sAskFps: "vAskFps", sAskStr: "vAskStr" };
 for (const [sid, vid] of Object.entries(valueLabel)) {
   $(sid).addEventListener("input", () => { $(vid).textContent = fmt1(parseFloat($(sid).value)); });
+  $(sid).addEventListener("change", () => POST(`/api/settings?key=${$(sid).dataset.key}&value=${$(sid).value}`));
+}
+// Percent-labelled sliders (0..1 shown as 0..100%).
+const pctLabel = { sBright: "vBright", sTintS: "vTintS" };
+for (const [sid, vid] of Object.entries(pctLabel)) {
+  $(sid).addEventListener("input", () => { $(vid).textContent = Math.round(parseFloat($(sid).value) * 100); });
   $(sid).addEventListener("change", () => POST(`/api/settings?key=${$(sid).dataset.key}&value=${$(sid).value}`));
 }
 $("tHard").onclick = () => {
@@ -226,6 +245,26 @@ $("tFlash").onclick = () => {
   const on = !$("tFlash").classList.contains("on");
   $("tFlash").classList.toggle("on", on);
   POST(`/api/settings?key=reduceFlashing&value=${on}`);
+};
+$("tTint").onclick = () => {
+  const on = !$("tTint").classList.contains("on");
+  $("tTint").classList.toggle("on", on);
+  POST(`/api/settings?key=tintEnabled&value=${on}`);
+};
+$("tintColor").addEventListener("change", () => {
+  POST(`/api/settings?key=tintColor&value=${encodeURIComponent($("tintColor").value.replace("#", ""))}`);
+});
+document.querySelectorAll("#tintSwatches .swatch").forEach(sw => sw.onclick = () => {
+  const col = sw.dataset.color;
+  $("tintColor").value = col;
+  $("tTint").classList.add("on");
+  POST(`/api/settings?key=tintColor&value=${encodeURIComponent(col.replace("#", ""))}`);
+  POST(`/api/settings?key=tintEnabled&value=true`);
+});
+$("tAutoskip").onclick = () => {
+  const on = !$("tAutoskip").classList.contains("on");
+  $("tAutoskip").classList.toggle("on", on);
+  POST(`/api/settings?key=autoskipEnabled&value=${on}`);
 };
 
 /* ---------- packs ---------- */

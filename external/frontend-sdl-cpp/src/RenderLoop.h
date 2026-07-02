@@ -4,13 +4,15 @@
 #include "ProjectMWrapper.h"
 #include "RemoteControl.h"
 #include "SDLRenderingWindow.h"
-#include "StrobeFilter.h"
+#include "PostProcess.h"
 
 #include "notifications/QuitNotification.h"
 
 #include <Poco/Logger.h>
 #include <Poco/NObserver.h>
 #include <Poco/Notification.h>
+
+#include <cstdint>
 
 class ProjectMGUI;
 
@@ -93,11 +95,15 @@ protected:
     int _renderWidth{0};
     int _renderHeight{0};
 
+    uint32_t _lastPlaylistPos{0xFFFFFFFFu}; //!< Last seen playlist position (preset-change detection).
+    uint32_t _presetStartTicks{0};          //!< SDL ticks when the current preset started (grace window).
+    uint32_t _lowFpsStartTicks{0};          //!< SDL ticks when FPS first dropped below threshold (0 = not low).
+
     ModifierKeyStates _keyStates; //!< Current "pressed" states of modifier keys
 
     Poco::AutoPtr<Poco::Util::AbstractConfiguration> _userConfig; //!< View of the "projectM" configuration subkey in the "user" configuration.
 
-    StrobeFilter _strobe; //!< Optional "reduce flashing" post-process (off unless enabled in settings).
+    PostProcess _post; //!< Fullscreen post-process (persistence/brightness/tint); inert unless an effect is on.
 
     Poco::Logger& _logger{Poco::Logger::get("RenderLoop")}; //!< The class logger.
 };

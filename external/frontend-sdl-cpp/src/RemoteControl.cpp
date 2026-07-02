@@ -209,7 +209,9 @@ void RemoteControl::RegisterRoutes()
         static const std::set<std::string> kKeys{
             "presetDuration", "softCutDuration", "hardCut", "hardCutDuration",
             "hardCutSensitivity", "beatSensitivity", "fps", "aspectCorrection",
-            "reduceFlashing", "flashStrength"};
+            "reduceFlashing", "flashStrength",
+            "brightness", "tintEnabled", "tintColor", "tintStrength",
+            "autoskipEnabled", "autoskipFps", "autoskipStrikes"};
         if (!kKeys.count(key) || value.empty())
         {
             res.status = 400;
@@ -237,6 +239,18 @@ void RemoteControl::RegisterRoutes()
     _server->Post("/api/blocklist/clear", [this, guard](const httplib::Request& req, httplib::Response& res) {
         if (!guard(req, res)) { return; }
         Enqueue(Command{CommandType::ClearBlocklist, "", ""});
+        res.set_content("{\"ok\":true}", "application/json");
+    });
+
+    _server->Post("/api/dislike", [this, guard](const httplib::Request& req, httplib::Response& res) {
+        if (!guard(req, res)) { return; }
+        Enqueue(Command{CommandType::DislikeCurrent, "", ""});
+        res.set_content("{\"ok\":true}", "application/json");
+    });
+
+    _server->Post("/api/dislikes/clear", [this, guard](const httplib::Request& req, httplib::Response& res) {
+        if (!guard(req, res)) { return; }
+        Enqueue(Command{CommandType::ClearDislikes, "", ""});
         res.set_content("{\"ok\":true}", "application/json");
     });
 
@@ -411,6 +425,13 @@ void RemoteControl::DrainCommands()
                 _workshopActive = true;
                 _workshopPath = command.arg;
                 break;
+            case CommandType::DislikeCurrent:
+                _workshopActive = false;
+                app.getSubsystem<ProjectMWrapper>().DislikeCurrent();
+                break;
+            case CommandType::ClearDislikes:
+                app.getSubsystem<ProjectMWrapper>().ClearDislikes();
+                break;
         }
     }
 }
@@ -497,6 +518,13 @@ void RemoteControl::ApplySetting(const std::string& key, const std::string& valu
     // Strobe damper settings are frontend-side (read by RenderLoop from the user config).
     else if (key == "reduceFlashing") { app.UserConfiguration()->setBool("projectM.reduceFlashing", on); }
     else if (key == "flashStrength") { app.UserConfiguration()->setDouble("projectM.flashStrength", v); }
+    else if (key == "brightness") { app.UserConfiguration()->setDouble("projectM.brightness", v); }
+    else if (key == "tintEnabled") { app.UserConfiguration()->setBool("projectM.tintEnabled", on); }
+    else if (key == "tintColor") { app.UserConfiguration()->setString("projectM.tintColor", value); }
+    else if (key == "tintStrength") { app.UserConfiguration()->setDouble("projectM.tintStrength", v); }
+    else if (key == "autoskipEnabled") { app.UserConfiguration()->setBool("projectM.autoskipEnabled", on); }
+    else if (key == "autoskipFps") { app.UserConfiguration()->setDouble("projectM.autoskipFps", v); }
+    else if (key == "autoskipStrikes") { app.UserConfiguration()->setInt("projectM.autoskipStrikes", static_cast<int>(v)); }
 }
 
 void RemoteControl::PollWorkshop()
@@ -653,6 +681,7 @@ void RemoteControl::PublishStatus(const ProjectMWrapper::PlaybackStatus& status,
          << "\"favoritesShuffle\":" << (_favShuffle.load() ? "true" : "false") << ","
          << "\"workshop\":" << (_workshopActive ? "true" : "false") << ","
          << "\"blocked\":" << ProjectMSDLApplication::instance().getSubsystem<ProjectMWrapper>().BlockedCount() << ","
+         << "\"disliked\":" << ProjectMSDLApplication::instance().getSubsystem<ProjectMWrapper>().DislikedCount() << ","
          << "\"fps\":" << static_cast<int>(_fps + 0.5f) << ","
          << "\"cpu\":" << static_cast<int>(_cpuPct + 0.5f) << ","
          << "\"memUsed\":" << _memUsedMB << ","
@@ -676,7 +705,14 @@ void RemoteControl::PublishStatus(const ProjectMWrapper::PlaybackStatus& status,
                  << "\"fps\":" << projectm_get_fps(pm) << ","
                  << "\"aspectCorrection\":" << (projectm_get_aspect_correction(pm) ? "true" : "false") << ","
                  << "\"reduceFlashing\":" << (ProjectMSDLApplication::instance().config().getBool("projectM.reduceFlashing", false) ? "true" : "false") << ","
-                 << "\"flashStrength\":" << ProjectMSDLApplication::instance().config().getDouble("projectM.flashStrength", 0.6)
+                 << "\"flashStrength\":" << ProjectMSDLApplication::instance().config().getDouble("projectM.flashStrength", 0.6) << ","
+                 << "\"brightness\":" << ProjectMSDLApplication::instance().config().getDouble("projectM.brightness", 1.0) << ","
+                 << "\"tintEnabled\":" << (ProjectMSDLApplication::instance().config().getBool("projectM.tintEnabled", false) ? "true" : "false") << ","
+                 << "\"tintColor\":\"" << JsonEscape(ProjectMSDLApplication::instance().config().getString("projectM.tintColor", "#00ff00")) << "\","
+                 << "\"tintStrength\":" << ProjectMSDLApplication::instance().config().getDouble("projectM.tintStrength", 1.0) << ","
+                 << "\"autoskipEnabled\":" << (ProjectMSDLApplication::instance().config().getBool("projectM.autoskipEnabled", true) ? "true" : "false") << ","
+                 << "\"autoskipFps\":" << ProjectMSDLApplication::instance().config().getDouble("projectM.autoskipFps", 20.0) << ","
+                 << "\"autoskipStrikes\":" << ProjectMSDLApplication::instance().config().getInt("projectM.autoskipStrikes", 3)
                  << "}";
     }
     else

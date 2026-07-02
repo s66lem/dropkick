@@ -14,6 +14,25 @@ projectM.texturePath = ${DROPKICK_TEXTURE_ROOT}
 projectM.shuffleEnabled = true
 projectM.presetLocked = false
 
+### Dropkick visual controls & playback quality
+
+# Reduce flashing (temporal persistence). Strength 0..1 (higher = smoother/more trails).
+projectM.reduceFlashing = false
+projectM.flashStrength = 0.6
+
+# Screen brightness multiplier, 0..1 (1 = full brightness).
+projectM.brightness = 1.0
+
+# Monochrome screen tint. tintColor is #rrggbb; tintStrength 0..1 (1 = full monochrome).
+projectM.tintEnabled = false
+projectM.tintColor = #00ff00
+projectM.tintStrength = 1.0
+
+# Auto-skip presets that run below autoskipFps. After autoskipStrikes slow skips, a preset is blocklisted.
+projectM.autoskipEnabled = true
+projectM.autoskipFps = 20
+projectM.autoskipStrikes = 3
+
 # Audio: empty = default/first capture device; any host capture device works.
 audio.device = ${DROPKICK_AUDIO_SOURCE}
 

@@ -47,21 +47,36 @@ void RenderLoop::Run()
         // Watchdog: if rendering a preset takes absurdly long, the V3D GPU likely hung on it.
         // Quarantine it and move on (best-effort — a hard hang kills us and the supervisor
         // + startup quarantine handle that instead). 4s is well above a legit heavy first frame.
-        _strobe.SetEnabled(_userConfig->getBool("reduceFlashing", false));
-        _strobe.SetStrength(static_cast<float>(_userConfig->getDouble("flashStrength", 0.6)));
+        // NOTE: _userConfig is the RAW user configuration (not a projectM-rooted view despite the
+        // header comment), so keys MUST carry the "projectM." prefix — same as skipToDropped below
+        // and as RemoteControl::ApplySetting writes them. Without it these reads silently return the
+        // defaults and the effects never engage.
+        _post.SetReduceFlashing(_userConfig->getBool("projectM.reduceFlashing", false));
+        _post.SetStrength(static_cast<float>(_userConfig->getDouble("projectM.flashStrength", 0.6)));
+        _post.SetBrightness(static_cast<float>(_userConfig->getDouble("projectM.brightness", 1.0)));
+        _post.SetTint(_userConfig->getBool("projectM.tintEnabled", false),
+                      _userConfig->getString("projectM.tintColor", "#00ff00"),
+                      static_cast<float>(_userConfig->getDouble("projectM.tintStrength", 1.0)));
 
         Uint32 renderStart = SDL_GetTicks();
-        if (_strobe.Enabled())
+        if (_post.Active())
         {
-            _strobe.Begin(_renderWidth, _renderHeight);
-            _projectMWrapper.RenderFrame(_strobe.SceneFbo()); // SceneFbo()==0 if setup failed -> backbuffer
-            _strobe.Composite();
+            _post.Begin(_renderWidth, _renderHeight);
+            _projectMWrapper.RenderFrame(_post.SceneFbo()); // SceneFbo()==0 if setup failed -> backbuffer
+            _post.Composite();
         }
         else
         {
             _projectMWrapper.RenderFrame();
         }
-        _remoteControl.PublishStatus(_projectMWrapper.CurrentStatus(), _audioCapture.AudioDeviceName(), limiter.FPS());
+        auto status = _projectMWrapper.CurrentStatus();
+        if (status.position != _lastPlaylistPos)
+        {
+            _lastPlaylistPos = status.position;
+            _presetStartTicks = SDL_GetTicks();
+            _lowFpsStartTicks = 0; // fresh preset — reset the low-FPS window
+        }
+        _remoteControl.PublishStatus(status, _audioCapture.AudioDeviceName(), limiter.FPS());
         _projectMGui.Draw();
 
         _sdlRenderingWindow.Swap();
@@ -70,6 +85,36 @@ void RenderLoop::Run()
         {
             poco_warning(_logger, "Frame took >4s — quarantining the current preset as a GPU-hang risk.");
             _projectMWrapper.QuarantineCurrent();
+        }
+
+        // Low-FPS autoskip: if a preset runs below the threshold for a sustained window (after a
+        // grace period), skip it. A persistent per-preset strike counter blocklists chronic offenders.
+        // Paused while the post-process pass is active: that pass costs several fps, so judging global
+        // FPS then would wrongly quarantine otherwise-fine presets onto the safety blocklist. True
+        // freezes are still caught by the 4s hard-hang watchdog above regardless of effects.
+        if (_userConfig->getBool("projectM.autoskipEnabled", true) && !_post.Active())
+        {
+            uint32_t now = SDL_GetTicks();
+            if (now - _presetStartTicks > 2000) // grace: ignore first-frame compile / soft-cut
+            {
+                float fps = limiter.FPS();
+                double threshold = _userConfig->getDouble("projectM.autoskipFps", 20.0);
+                if (fps > 0.5f && fps < threshold)
+                {
+                    if (_lowFpsStartTicks == 0) { _lowFpsStartTicks = now; }
+                    else if (now - _lowFpsStartTicks > 1500) // sustained low FPS
+                    {
+                        int strikes = _userConfig->getInt("projectM.autoskipStrikes", 3);
+                        _projectMWrapper.AutoSkipSlow(static_cast<uint32_t>(strikes < 0 ? 0 : strikes));
+                        _lowFpsStartTicks = 0;
+                        _presetStartTicks = now; // grace the next preset
+                    }
+                }
+                else
+                {
+                    _lowFpsStartTicks = 0; // recovered
+                }
+            }
         }
 
         limiter.EndFrame();

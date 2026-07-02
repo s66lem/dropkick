@@ -20,8 +20,8 @@ add_executable(projectMSDL WIN32 MACOSX_BUNDLE
         SDLRenderingWindow.h
         RemoteControl.cpp
         RemoteControl.h
-        StrobeFilter.cpp
-        StrobeFilter.h
+        PostProcess.cpp
+        PostProcess.h
         main.cpp
         projectMSDL.rc
         )
