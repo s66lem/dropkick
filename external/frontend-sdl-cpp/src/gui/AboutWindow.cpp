@@ -30,22 +30,42 @@ void AboutWindow::Draw()
     }
 
     ImGui::SetNextWindowSize(ImVec2(750, 600), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin("About the projectM SDL Frontend###About", &_visible, ImGuiWindowFlags_NoCollapse))
+    if (ImGui::Begin("About Dropkick###About", &_visible, ImGuiWindowFlags_NoCollapse))
     {
         _gui.PushToastFont();
-        ImGui::TextUnformatted("projectM SDL Frontend");
+        ImGui::TextUnformatted("Dropkick");
         _gui.PopFont();
+        ImGui::Dummy({.0f, 6.0f});
+        ImGui::TextUnformatted("A Raspberry Pi audio visualizer built on projectM.");
         ImGui::Dummy({.0f, 10.0f});
-        ImGui::Text("Version: %s", PROJECTMSDL_VERSION);
+        ImGui::Text("Frontend: %s", PROJECTMSDL_VERSION);
         ImGui::Text("libprojectM: %s (built with %s)", _projectMWrapper.ProjectMRuntimeVersion().c_str(), _projectMWrapper.ProjectMBuildVersion().c_str());
-        ImGui::Dummy({.0f, 20.0f});
-        ImGui::TextUnformatted("Brought to you by the projectM Team and contributors!");
+        ImGui::Dummy({.0f, 14.0f});
+
+        ImGui::TextUnformatted("What Dropkick adds:");
+        ImGui::BulletText("OpenGL ES 3.1 support for the Raspberry Pi 5 (V3D) GPU");
+        ImGui::BulletText("Phone/tablet remote: browse, favorites, live preset editor, settings");
+        ImGui::BulletText("Auto-skip that quarantines presets which hang the GPU");
+        ImGui::BulletText("\"Reduce flashing\" render filter for strobe-heavy presets");
+        ImGui::Dummy({.0f, 6.0f});
+        ImGui::TextWrapped("Open the remote in a browser on the same network:");
+        if (ImGui::SmallButton("http://<this-device>:8080"))
+        {
+            SystemBrowser::OpenURL("http://localhost:8080");
+        }
+        ImGui::Dummy({.0f, 6.0f});
+        ImGui::TextWrapped("Dropkick source and issues:");
+        if (ImGui::SmallButton("https://github.com/s66lem/dropkick"))
+        {
+            SystemBrowser::OpenURL("https://github.com/s66lem/dropkick");
+        }
+
         ImGui::Dummy({.0f, 10.0f});
         ImGui::Separator();
         ImGui::Dummy({.0f, 10.0f});
-        ImGui::TextWrapped("The projectM SDL frontend is open-source software licensed under the GNU General Public License, version 3.");
+        ImGui::TextWrapped("Dropkick is built on the projectM SDL frontend and libprojectM by the projectM Team and contributors. The frontend is licensed under the GNU General Public License v3; libprojectM under the GNU LGPL v2.1.");
         ImGui::Dummy({.0f, 10.0f});
-        ImGui::TextWrapped("Get the source code on GitHub or report an issue with the SDL frontend:");
+        ImGui::TextWrapped("Upstream projectM source:");
         if (ImGui::SmallButton("https://github.com/projectM-visualizer/frontend-sdl2"))
         {
             SystemBrowser::OpenURL("https://github.com/projectM-visualizer/frontend-sdl2");
