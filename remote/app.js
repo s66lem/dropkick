@@ -155,14 +155,33 @@ $("tFav").onclick = async () => {
   refresh();
 };
 $("favShuffle").onclick = () => { POST("/api/favorites/shuffle"); setTimeout(refresh, 300); };
-$("btnCapture").onclick = async () => {
-  const b = $("btnCapture");
-  await POST("/api/workshop/capture");
-  b.textContent = "✎ Copied to workshop/ — edit & save to hot-reload";
-  b.classList.add("done");
-  setTimeout(() => { b.textContent = "✎ Edit this preset in Workshop"; b.classList.remove("done"); }, 4000);
-  setTimeout(refresh, 500);
-};
+async function openEditor() {
+  const msg = $("edMsg"); msg.textContent = "Loading…";
+  $("editor").classList.add("on");
+  try {
+    const s = await GET("/api/workshop/source");
+    $("edText").value = s.text || "";
+    $("edName").textContent = (s.path || "").split("/").pop() || "preset";
+    msg.textContent = s.text ? "" : "Couldn't read source.";
+  } catch (e) { msg.textContent = "Failed to load source."; }
+}
+async function applyEdit() {
+  $("edMsg").textContent = "Applying…";
+  await fetch(withToken("/api/workshop/apply"), { method: "POST", body: $("edText").value });
+  $("edMsg").textContent = "Applied — showing on screen.";
+  setTimeout(refresh, 600);
+}
+async function saveEdit() {
+  const name = prompt("Save as (in workshop/):", $("edName").textContent.replace(/^_scratch\.milk$/, "my-preset.milk"));
+  if (!name) return;
+  await fetch(withToken("/api/workshop/save?name=" + encodeURIComponent(name)), { method: "POST", body: $("edText").value });
+  $("edMsg").textContent = "Saved " + name;
+}
+$("btnCapture").textContent = "✎ Edit this preset";
+$("btnCapture").onclick = openEditor;
+$("edClose").onclick = () => $("editor").classList.remove("on");
+$("edApply").onclick = applyEdit;
+$("edSave").onclick = saveEdit;
 $("btnAudio").onclick = () => { POST("/api/audio/next"); setTimeout(refresh, 600); };
 $("btnClearBlock").onclick = () => { POST("/api/blocklist/clear"); setTimeout(refresh, 500); };
 

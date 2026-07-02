@@ -107,6 +107,19 @@
   </section>
 </div>
 
+<div id="editor" class="editor-overlay">
+  <div class="editor-head">
+    <button id="edClose" class="edbtn">‹ Close</button>
+    <span id="edName" class="edname">preset</span>
+    <div class="edactions">
+      <button id="edApply" class="edbtn accent">Apply</button>
+      <button id="edSave" class="edbtn">Save…</button>
+    </div>
+  </div>
+  <div id="edMsg" class="edmsg"></div>
+  <textarea id="edText" spellcheck="false" autocapitalize="off" autocorrect="off"></textarea>
+</div>
+
 <nav class="tabs">
   <button class="tab on" data-t="now"><svg viewBox="0 0 24 24"><path d="M4 13l4-3 4 5 4-8 4 6"/></svg>Now</button>
   <button class="tab" data-t="browse"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>Browse</button>
