@@ -7,7 +7,8 @@
 # Usage: seed-blocklist.sh [--dry-run] [shader_byte_threshold]
 #   --dry-run   list candidates, don't write the blocklist
 #   threshold   warp+comp shader bytes above which a preset is flagged (default 6000)
-set -euo pipefail
+# Note: no `pipefail` — grep exits 1 on "no match", which is normal here.
+set -eu
 
 DRY=0
 [ "${1:-}" = "--dry-run" ] && { DRY=1; shift; }
