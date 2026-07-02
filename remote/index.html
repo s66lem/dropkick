@@ -61,21 +61,27 @@
   <!-- SETTINGS -->
   <section class="view" data-view="set">
     <div class="set"><div class="h"><b>Preset duration</b><span class="readout"><span id="vDur">—</span> s</span></div>
+      <div class="desc">How long each visual plays before switching.</div>
       <input type="range" id="sDur" data-key="presetDuration" min="3" max="120" step="1"></div>
     <div class="set"><div class="h"><b>Transition</b><span class="readout"><span id="vSoft">—</span> s</span></div>
+      <div class="desc">Blend time when a new preset takes over.</div>
       <input type="range" id="sSoft" data-key="softCutDuration" min="0" max="10" step="0.5"></div>
     <div class="set"><div class="h"><b>Beat sensitivity</b><span class="readout" id="vBeat">—</span></div>
+      <div class="desc">How strongly the visuals react to the audio.</div>
       <input type="range" id="sBeat" data-key="beatSensitivity" min="0" max="2" step="0.05"></div>
     <div class="set">
       <div class="tg"><b>Hard cut</b><div class="sw" id="tHard"></div></div>
+      <div class="desc">Snap instantly to a new preset on loud beats.</div>
       <div class="h mt"><span class="label">Sensitivity</span><span class="readout" id="vHardS">—</span></div>
       <input type="range" id="sHardS" data-key="hardCutSensitivity" min="0" max="5" step="0.1">
       <div class="h mt"><span class="label">Min duration</span><span class="readout"><span id="vHardD">—</span> s</span></div>
       <input type="range" id="sHardD" data-key="hardCutDuration" min="0" max="60" step="1">
     </div>
     <div class="set"><div class="h"><b>FPS</b><span class="readout" id="vFps">—</span></div>
+      <div class="desc">Target frame rate on the display.</div>
       <input type="range" id="sFps" data-key="fps" min="20" max="90" step="5">
       <div class="tg"><span class="label">Aspect correction</span><div class="sw" id="tAspect"></div></div>
+      <div class="desc">Keep shapes proportioned to the screen.</div>
     </div>
     <div class="set flexrow">
       <div><b>Pack</b><div class="label mt" id="packName">—</div></div>
