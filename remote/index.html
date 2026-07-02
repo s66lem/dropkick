@@ -1,27 +1,100 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-  <title>Dropkick Remote</title>
-  <link rel="stylesheet" href="style.css">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Dropkick</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <main>
-    <h1>Dropkick</h1>
-    <p id="preset" class="preset">…</p>
-    <div class="grid">
-      <button data-action="prev">◀ Prev</button>
-      <button data-action="next">Next ▶</button>
-      <button data-action="random">🎲 Random</button>
-      <button id="shuffle" data-action="shuffle">Shuffle</button>
-      <button id="lock" data-action="lock">Lock</button>
-      <button data-action="audio/next">🎧 Audio</button>
+<div class="app">
+  <div class="top">
+    <div class="brand">Dropkick</div>
+    <div class="topr">
+      <button id="theme" class="theme" aria-label="Toggle dark mode">◐</button>
+      <div class="src" id="audioSrc">—</div>
     </div>
-    <label for="packs">Preset pack</label>
-    <select id="packs"></select>
-    <p id="audio" class="audio"></p>
-  </main>
-  <script src="app.js"></script>
+  </div>
+
+  <!-- NOW -->
+  <section class="view on" data-view="now">
+    <div class="panel">
+      <div class="phead"><span class="n">NOW PLAYING</span><span class="n" id="pos">— / —</span></div>
+      <div class="screen" id="screen">
+        <div class="idx" id="posIdx">▸ POS —</div>
+        <div class="pname" id="pname">—</div>
+        <div class="ppath" id="ppath"></div>
+        <span class="cat" id="pcat">—</span>
+      </div>
+      <div class="pad">
+        <button class="key" id="btnPrev"><svg viewBox="0 0 24 24"><path d="M18 6v12L9 12zM7 6v12"/></svg><span class="k">Prev</span></button>
+        <button class="key accent" id="btnNext"><svg viewBox="0 0 24 24"><path d="M6 6l12 6-12 6z"/></svg><span class="k">Next</span></button>
+        <button class="key accent" id="btnRandom"><svg viewBox="0 0 24 24"><path d="M4 7h4l8 10h4M14 7h6M4 17h4l3-4"/></svg><span class="k">Random</span></button>
+      </div>
+      <div class="toggles">
+        <button class="tk" id="tShuffle"><span class="lamp"></span><span class="k">Shuffle</span></button>
+        <button class="tk" id="tLock"><span class="lamp"></span><span class="k">Lock</span></button>
+        <button class="tk" id="tFav"><span class="lamp"></span><span class="k">Favorite</span></button>
+      </div>
+    </div>
+  </section>
+
+  <!-- BROWSE -->
+  <section class="view" data-view="browse">
+    <input class="search" id="search" placeholder="search presets…">
+    <div id="browseList"></div>
+  </section>
+
+  <!-- FAVORITES -->
+  <section class="view" data-view="fav">
+    <div class="set flexrow">
+      <div><b>Shuffle favorites</b><div class="label mt">Restrict Next/Random to stars</div></div>
+      <div class="sw" id="favShuffle"></div>
+    </div>
+    <div class="chead"><span class="c">Starred</span><span class="ct" id="favCount">0</span></div>
+    <div id="favList"></div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section class="view" data-view="set">
+    <div class="set"><div class="h"><b>Preset duration</b><span class="readout"><span id="vDur">—</span> s</span></div>
+      <input type="range" id="sDur" data-key="presetDuration" min="3" max="120" step="1"></div>
+    <div class="set"><div class="h"><b>Transition</b><span class="readout"><span id="vSoft">—</span> s</span></div>
+      <input type="range" id="sSoft" data-key="softCutDuration" min="0" max="10" step="0.5"></div>
+    <div class="set"><div class="h"><b>Beat sensitivity</b><span class="readout" id="vBeat">—</span></div>
+      <input type="range" id="sBeat" data-key="beatSensitivity" min="0" max="2" step="0.05"></div>
+    <div class="set">
+      <div class="tg"><b>Hard cut</b><div class="sw" id="tHard"></div></div>
+      <div class="h mt"><span class="label">Sensitivity</span><span class="readout" id="vHardS">—</span></div>
+      <input type="range" id="sHardS" data-key="hardCutSensitivity" min="0" max="5" step="0.1">
+      <div class="h mt"><span class="label">Min duration</span><span class="readout"><span id="vHardD">—</span> s</span></div>
+      <input type="range" id="sHardD" data-key="hardCutDuration" min="0" max="60" step="1">
+    </div>
+    <div class="set"><div class="h"><b>FPS</b><span class="readout" id="vFps">—</span></div>
+      <input type="range" id="sFps" data-key="fps" min="20" max="90" step="5">
+      <div class="tg"><span class="label">Aspect correction</span><div class="sw" id="tAspect"></div></div>
+    </div>
+    <div class="set flexrow">
+      <div><b>Pack</b><div class="label mt" id="packName">—</div></div>
+      <select id="packs" class="packsel"></select>
+    </div>
+    <div class="set flexrow">
+      <div><b>Audio input</b><div class="label mt" id="audioName">—</div></div>
+      <button class="readout btnish" id="btnAudio">NEXT ›</button>
+    </div>
+  </section>
+</div>
+
+<nav class="tabs">
+  <button class="tab on" data-t="now"><svg viewBox="0 0 24 24"><path d="M4 13l4-3 4 5 4-8 4 6"/></svg>Now</button>
+  <button class="tab" data-t="browse"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>Browse</button>
+  <button class="tab" data-t="fav"><svg viewBox="0 0 24 24"><path d="M12 3l2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.8 6.1 21l1.2-6.5L2.5 9.9 9 9z"/></svg>Favorites</button>
+  <button class="tab" data-t="set"><svg viewBox="0 0 24 24"><path d="M4 8h10M18 8h2M4 16h2M10 16h10"/><circle cx="15" cy="8" r="2.4"/><circle cx="8" cy="16" r="2.4"/></svg>Settings</button>
+</nav>
+
+<script src="app.js"></script>
 </body>
 </html>
