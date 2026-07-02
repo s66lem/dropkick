@@ -583,10 +583,59 @@ void RemoteControl::CaptureToWorkshop()
     poco_information_f1(_logger, "Workshop: captured current preset to %s", dest);
 }
 
-void RemoteControl::PublishStatus(const ProjectMWrapper::PlaybackStatus& status, const std::string& audioDevice)
+void RemoteControl::SampleSystemStats()
+{
+    // CPU % from /proc/stat delta.
+    {
+        std::ifstream in("/proc/stat");
+        std::string cpu;
+        unsigned long long u = 0, n = 0, s = 0, i = 0, io = 0, irq = 0, sirq = 0, st = 0;
+        if (in >> cpu >> u >> n >> s >> i >> io >> irq >> sirq >> st)
+        {
+            unsigned long long idle = i + io;
+            unsigned long long total = u + n + s + i + io + irq + sirq + st;
+            if (_prevCpuTotal != 0 && total > _prevCpuTotal)
+            {
+                double dTotal = static_cast<double>(total - _prevCpuTotal);
+                double dIdle = static_cast<double>(idle - _prevCpuIdle);
+                _cpuPct = static_cast<float>((1.0 - dIdle / dTotal) * 100.0);
+            }
+            _prevCpuTotal = total;
+            _prevCpuIdle = idle;
+        }
+    }
+    // Memory from /proc/meminfo.
+    {
+        std::ifstream in("/proc/meminfo");
+        std::string key, unit;
+        long value = 0, memTotal = 0, memAvail = 0;
+        while (in >> key >> value >> unit)
+        {
+            if (key == "MemTotal:") { memTotal = value; }
+            else if (key == "MemAvailable:") { memAvail = value; break; }
+        }
+        if (memTotal > 0)
+        {
+            _memTotalMB = memTotal / 1024;
+            _memUsedMB = (memTotal - memAvail) / 1024;
+        }
+    }
+    // Temperature from the thermal zone (°C).
+    {
+        std::ifstream in("/sys/class/thermal/thermal_zone0/temp");
+        long milli = 0;
+        if (in >> milli) { _tempC = milli / 1000.0f; }
+    }
+}
+
+void RemoteControl::PublishStatus(const ProjectMWrapper::PlaybackStatus& status, const std::string& audioDevice, float fps)
 {
     _currentPath = status.presetName;
     std::string reportedPreset = _workshopActive ? _workshopPath : status.presetName;
+
+    _fps = fps;
+    long nowSec = static_cast<long>(::time(nullptr));
+    if (nowSec != _lastStatsSample) { _lastStatsSample = nowSec; SampleSystemStats(); }
     bool favorited;
     {
         std::lock_guard<std::mutex> lock(_favMutex);
@@ -604,6 +653,11 @@ void RemoteControl::PublishStatus(const ProjectMWrapper::PlaybackStatus& status,
          << "\"favoritesShuffle\":" << (_favShuffle.load() ? "true" : "false") << ","
          << "\"workshop\":" << (_workshopActive ? "true" : "false") << ","
          << "\"blocked\":" << ProjectMSDLApplication::instance().getSubsystem<ProjectMWrapper>().BlockedCount() << ","
+         << "\"fps\":" << static_cast<int>(_fps + 0.5f) << ","
+         << "\"cpu\":" << static_cast<int>(_cpuPct + 0.5f) << ","
+         << "\"memUsed\":" << _memUsedMB << ","
+         << "\"memTotal\":" << _memTotalMB << ","
+         << "\"temp\":" << static_cast<int>(_tempC + 0.5f) << ","
          << "\"audio\":\"" << JsonEscape(audioDevice) << "\""
          << "}";
 

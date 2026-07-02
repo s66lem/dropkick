@@ -139,6 +139,11 @@ async function refresh() {
     const blocked = s.blocked || 0;
     $("blockedRow").style.display = blocked > 0 ? "" : "none";
     $("blockedCount").textContent = blocked;
+    // System monitor
+    if (s.fps !== undefined) $("stFps").textContent = s.fps;
+    if (s.cpu !== undefined) $("stCpu").textContent = s.cpu;
+    if (s.temp !== undefined) $("stTemp").textContent = s.temp;
+    if (s.memTotal) $("stMem").textContent = (s.memUsed / 1024).toFixed(1) + "/" + (s.memTotal / 1024).toFixed(1) + "G";
   } catch (e) { /* transient */ }
 }
 

@@ -61,7 +61,7 @@ void RenderLoop::Run()
         {
             _projectMWrapper.RenderFrame();
         }
-        _remoteControl.PublishStatus(_projectMWrapper.CurrentStatus(), _audioCapture.AudioDeviceName());
+        _remoteControl.PublishStatus(_projectMWrapper.CurrentStatus(), _audioCapture.AudioDeviceName(), limiter.FPS());
         _projectMGui.Draw();
 
         _sdlRenderingWindow.Swap();

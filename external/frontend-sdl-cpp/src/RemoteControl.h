@@ -53,7 +53,7 @@ public:
     void DrainCommands();
 
     /** Refreshes status + settings snapshots served to HTTP clients. Render thread only. */
-    void PublishStatus(const ProjectMWrapper::PlaybackStatus& status, const std::string& audioDevice);
+    void PublishStatus(const ProjectMWrapper::PlaybackStatus& status, const std::string& audioDevice, float fps);
 
 private:
     void RegisterRoutes();
@@ -72,6 +72,17 @@ private:
     void JumpToFavorite(bool nextInOrder); //!< Render thread only.
     void PollWorkshop();             //!< Render thread only — hot-reloads changed workshop presets.
     void CaptureToWorkshop();        //!< Render thread only — copies current preset into the workshop dir.
+    void SampleSystemStats();        //!< Render thread only — refresh CPU/mem/temp (throttled ~1 Hz).
+
+    // System monitor (render thread only).
+    long _lastStatsSample{0};
+    unsigned long long _prevCpuTotal{0};
+    unsigned long long _prevCpuIdle{0};
+    float _fps{0.0f};
+    float _cpuPct{0.0f};
+    float _tempC{0.0f};
+    long _memUsedMB{0};
+    long _memTotalMB{0};
 
     std::unique_ptr<httplib::Server> _server;
     std::thread _serverThread;
