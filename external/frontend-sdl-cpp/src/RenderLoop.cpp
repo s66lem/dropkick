@@ -65,7 +65,14 @@ void RenderLoop::Run()
         {
             _projectMWrapper.RenderFrame();
         }
-        _remoteControl.PublishStatus(_projectMWrapper.CurrentStatus(), _audioCapture.AudioDeviceName(), limiter.FPS());
+        auto status = _projectMWrapper.CurrentStatus();
+        if (status.position != _lastPlaylistPos)
+        {
+            _lastPlaylistPos = status.position;
+            _presetStartTicks = SDL_GetTicks();
+            _lowFpsStartTicks = 0; // fresh preset — reset the low-FPS window
+        }
+        _remoteControl.PublishStatus(status, _audioCapture.AudioDeviceName(), limiter.FPS());
         _projectMGui.Draw();
 
         _sdlRenderingWindow.Swap();
@@ -74,6 +81,33 @@ void RenderLoop::Run()
         {
             poco_warning(_logger, "Frame took >4s — quarantining the current preset as a GPU-hang risk.");
             _projectMWrapper.QuarantineCurrent();
+        }
+
+        // Low-FPS autoskip: if a preset runs below the threshold for a sustained window (after a
+        // grace period), skip it. A persistent per-preset strike counter blocklists chronic offenders.
+        if (_userConfig->getBool("projectM.autoskipEnabled", true))
+        {
+            uint32_t now = SDL_GetTicks();
+            if (now - _presetStartTicks > 2000) // grace: ignore first-frame compile / soft-cut
+            {
+                float fps = limiter.FPS();
+                double threshold = _userConfig->getDouble("projectM.autoskipFps", 20.0);
+                if (fps > 0.5f && fps < threshold)
+                {
+                    if (_lowFpsStartTicks == 0) { _lowFpsStartTicks = now; }
+                    else if (now - _lowFpsStartTicks > 1500) // sustained low FPS
+                    {
+                        int strikes = _userConfig->getInt("projectM.autoskipStrikes", 3);
+                        _projectMWrapper.AutoSkipSlow(static_cast<uint32_t>(strikes < 0 ? 0 : strikes));
+                        _lowFpsStartTicks = 0;
+                        _presetStartTicks = now; // grace the next preset
+                    }
+                }
+                else
+                {
+                    _lowFpsStartTicks = 0; // recovered
+                }
+            }
         }
 
         limiter.EndFrame();

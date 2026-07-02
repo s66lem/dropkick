@@ -12,6 +12,7 @@
 #include <Poco/Util/Subsystem.h>
 
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <set>
 #include <string>
@@ -135,6 +136,13 @@ public:
      */
     void ClearBlocklist();
 
+    /**
+     * @brief Records that the current preset ran too slowly and skips it. Increments a persistent
+     * per-preset strike count; once it reaches @p strikesThreshold the preset is blocklisted and
+     * removed. Below the threshold it is only skipped and can recover on a later, faster run.
+     */
+    void AutoSkipSlow(uint32_t strikesThreshold);
+
 private:
     /**
      * @brief projectM callback. Called whenever a preset is switched.
@@ -167,10 +175,14 @@ private:
     void WriteBreadcrumb(const std::string& path); //!< Record the active preset (crash breadcrumb).
     void ClearBreadcrumb();                        //!< Remove the breadcrumb on clean shutdown.
     void QuarantineFromCrash();                    //!< If the last run died mid-preset, blocklist it.
+    void LoadSlowCounts();                          //!< Read persistent low-FPS strike counts.
+    void SaveSlowCounts();                          //!< Persist strike counts to disk.
 
     std::set<std::string> _blocklist;   //!< Preset paths that hang/kill the app.
     std::string _blocklistPath;         //!< ~/.local/share/dropkick/blocklist.txt
     std::string _breadcrumbPath;        //!< ~/.local/share/dropkick/state/loading
+    std::map<std::string, uint32_t> _slowCounts; //!< Preset path -> low-FPS auto-skip strikes.
+    std::string _slowCountsPath;                 //!< ~/.local/share/dropkick/slowcounts.txt
 
     Poco::AutoPtr<Poco::Util::AbstractConfiguration> _userConfig; //!< View of the "projectM" configuration subkey in the "user" configuration.
     Poco::AutoPtr<Poco::Util::AbstractConfiguration> _projectMConfigView; //!< View of the "projectM" configuration subkey in the "effective" configuration.

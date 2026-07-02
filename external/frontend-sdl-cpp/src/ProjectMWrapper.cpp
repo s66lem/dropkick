@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <vector>
@@ -35,6 +36,9 @@ void ProjectMWrapper::initialize(Poco::Util::Application& app)
     _breadcrumbPath = Poco::Path::expand("~/.local/share/dropkick/state/loading");
     LoadBlocklist();
     QuarantineFromCrash(); // if the previous run died mid-preset, blocklist that preset
+
+    _slowCountsPath = Poco::Path::expand("~/.local/share/dropkick/slowcounts.txt");
+    LoadSlowCounts();
 
     if (!_projectM)
     {
@@ -408,6 +412,57 @@ void ProjectMWrapper::ClearBlocklist()
     _blocklist.clear();
     std::remove(_blocklistPath.c_str());
     poco_information(_logger, "Blocklist cleared (cleared presets return on next pack load/restart).");
+}
+
+void ProjectMWrapper::LoadSlowCounts()
+{
+    _slowCounts.clear();
+    std::ifstream in(_slowCountsPath);
+    std::string line;
+    while (std::getline(in, line))
+    {
+        if (!line.empty() && line.back() == '\r') { line.pop_back(); }
+        auto tab = line.find('\t');
+        if (tab == std::string::npos) { continue; }
+        uint32_t count = static_cast<uint32_t>(std::strtoul(line.substr(0, tab).c_str(), nullptr, 10));
+        std::string path = line.substr(tab + 1);
+        if (!path.empty() && count > 0) { _slowCounts[path] = count; }
+    }
+}
+
+void ProjectMWrapper::SaveSlowCounts()
+{
+    std::ofstream out(_slowCountsPath, std::ios::trunc);
+    if (!out) { return; }
+    for (const auto& kv : _slowCounts) { out << kv.second << '\t' << kv.first << "\n"; }
+}
+
+void ProjectMWrapper::AutoSkipSlow(uint32_t strikesThreshold)
+{
+    if (!_playlist) { return; }
+    uint32_t pos = projectm_playlist_get_position(_playlist);
+    char* item = projectm_playlist_item(_playlist, pos);
+    std::string path = item ? item : "";
+    if (item) { projectm_playlist_free_string(item); }
+    if (path.empty()) { return; }
+
+    uint32_t strikes = ++_slowCounts[path];
+    if (strikesThreshold > 0 && strikes >= strikesThreshold)
+    {
+        _slowCounts.erase(path);
+        SaveSlowCounts();
+        AddToBlocklist(path);
+        projectm_playlist_play_next(_playlist, true);
+        ApplyBlocklist(); // NOTE: Task 4 renames this to ApplyRemovalLists()
+        poco_information_f2(_logger, "Auto-skip: preset too slow %?u times — blocklisted: %s",
+                            strikes, path);
+    }
+    else
+    {
+        SaveSlowCounts();
+        projectm_playlist_play_next(_playlist, true);
+        poco_information_f2(_logger, "Auto-skip: slow preset (strike %?u): %s", strikes, path);
+    }
 }
 
 void ProjectMWrapper::PresetSwitchedEvent(bool isHardCut, unsigned int index, void* context)

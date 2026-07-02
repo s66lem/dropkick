@@ -209,9 +209,12 @@ async function loadSettings() {
     $("tTint").classList.toggle("on", !!s.tintEnabled);
     $("tintColor").value = s.tintColor || "#00ff00";
     $("sTintS").value = s.tintStrength; $("vTintS").textContent = Math.round(s.tintStrength * 100);
+    $("tAutoskip").classList.toggle("on", !!s.autoskipEnabled);
+    $("sAskFps").value = s.autoskipFps; $("vAskFps").textContent = s.autoskipFps;
+    $("sAskStr").value = s.autoskipStrikes; $("vAskStr").textContent = s.autoskipStrikes;
   } catch (e) {}
 }
-const valueLabel = { sDur: "vDur", sSoft: "vSoft", sBeat: "vBeat", sHardS: "vHardS", sHardD: "vHardD", sFps: "vFps", sFlash: "vFlash" };
+const valueLabel = { sDur: "vDur", sSoft: "vSoft", sBeat: "vBeat", sHardS: "vHardS", sHardD: "vHardD", sFps: "vFps", sFlash: "vFlash", sAskFps: "vAskFps", sAskStr: "vAskStr" };
 for (const [sid, vid] of Object.entries(valueLabel)) {
   $(sid).addEventListener("input", () => { $(vid).textContent = fmt1(parseFloat($(sid).value)); });
   $(sid).addEventListener("change", () => POST(`/api/settings?key=${$(sid).dataset.key}&value=${$(sid).value}`));
@@ -252,6 +255,11 @@ document.querySelectorAll("#tintSwatches .swatch").forEach(sw => sw.onclick = ()
   POST(`/api/settings?key=tintColor&value=${encodeURIComponent(col.replace("#", ""))}`);
   POST(`/api/settings?key=tintEnabled&value=true`);
 });
+$("tAutoskip").onclick = () => {
+  const on = !$("tAutoskip").classList.contains("on");
+  $("tAutoskip").classList.toggle("on", on);
+  POST(`/api/settings?key=autoskipEnabled&value=${on}`);
+};
 
 /* ---------- packs ---------- */
 async function loadPacks() {

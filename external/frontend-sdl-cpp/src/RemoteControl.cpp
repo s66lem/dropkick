@@ -210,7 +210,8 @@ void RemoteControl::RegisterRoutes()
             "presetDuration", "softCutDuration", "hardCut", "hardCutDuration",
             "hardCutSensitivity", "beatSensitivity", "fps", "aspectCorrection",
             "reduceFlashing", "flashStrength",
-            "brightness", "tintEnabled", "tintColor", "tintStrength"};
+            "brightness", "tintEnabled", "tintColor", "tintStrength",
+            "autoskipEnabled", "autoskipFps", "autoskipStrikes"};
         if (!kKeys.count(key) || value.empty())
         {
             res.status = 400;
@@ -502,6 +503,9 @@ void RemoteControl::ApplySetting(const std::string& key, const std::string& valu
     else if (key == "tintEnabled") { app.UserConfiguration()->setBool("projectM.tintEnabled", on); }
     else if (key == "tintColor") { app.UserConfiguration()->setString("projectM.tintColor", value); }
     else if (key == "tintStrength") { app.UserConfiguration()->setDouble("projectM.tintStrength", v); }
+    else if (key == "autoskipEnabled") { app.UserConfiguration()->setBool("projectM.autoskipEnabled", on); }
+    else if (key == "autoskipFps") { app.UserConfiguration()->setDouble("projectM.autoskipFps", v); }
+    else if (key == "autoskipStrikes") { app.UserConfiguration()->setInt("projectM.autoskipStrikes", static_cast<int>(v)); }
 }
 
 void RemoteControl::PollWorkshop()
@@ -685,7 +689,10 @@ void RemoteControl::PublishStatus(const ProjectMWrapper::PlaybackStatus& status,
                  << "\"brightness\":" << ProjectMSDLApplication::instance().config().getDouble("projectM.brightness", 1.0) << ","
                  << "\"tintEnabled\":" << (ProjectMSDLApplication::instance().config().getBool("projectM.tintEnabled", false) ? "true" : "false") << ","
                  << "\"tintColor\":\"" << JsonEscape(ProjectMSDLApplication::instance().config().getString("projectM.tintColor", "#00ff00")) << "\","
-                 << "\"tintStrength\":" << ProjectMSDLApplication::instance().config().getDouble("projectM.tintStrength", 1.0)
+                 << "\"tintStrength\":" << ProjectMSDLApplication::instance().config().getDouble("projectM.tintStrength", 1.0) << ","
+                 << "\"autoskipEnabled\":" << (ProjectMSDLApplication::instance().config().getBool("projectM.autoskipEnabled", true) ? "true" : "false") << ","
+                 << "\"autoskipFps\":" << ProjectMSDLApplication::instance().config().getDouble("projectM.autoskipFps", 20.0) << ","
+                 << "\"autoskipStrikes\":" << ProjectMSDLApplication::instance().config().getInt("projectM.autoskipStrikes", 3)
                  << "}";
     }
     else
