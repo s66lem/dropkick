@@ -89,7 +89,10 @@ void RenderLoop::Run()
 
         // Low-FPS autoskip: if a preset runs below the threshold for a sustained window (after a
         // grace period), skip it. A persistent per-preset strike counter blocklists chronic offenders.
-        if (_userConfig->getBool("projectM.autoskipEnabled", true))
+        // Paused while the post-process pass is active: that pass costs several fps, so judging global
+        // FPS then would wrongly quarantine otherwise-fine presets onto the safety blocklist. True
+        // freezes are still caught by the 4s hard-hang watchdog above regardless of effects.
+        if (_userConfig->getBool("projectM.autoskipEnabled", true) && !_post.Active())
         {
             uint32_t now = SDL_GetTicks();
             if (now - _presetStartTicks > 2000) // grace: ignore first-frame compile / soft-cut

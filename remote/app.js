@@ -212,7 +212,8 @@ async function loadSettings() {
     $("tFlash").classList.toggle("on", !!s.reduceFlashing);
     $("sBright").value = s.brightness; $("vBright").textContent = Math.round(s.brightness * 100);
     $("tTint").classList.toggle("on", !!s.tintEnabled);
-    $("tintColor").value = s.tintColor || "#00ff00";
+    const tc = s.tintColor || "#00ff00";
+    $("tintColor").value = tc.charAt(0) === "#" ? tc : "#" + tc; // input[type=color] needs #rrggbb
     $("sTintS").value = s.tintStrength; $("vTintS").textContent = Math.round(s.tintStrength * 100);
     $("tAutoskip").classList.toggle("on", !!s.autoskipEnabled);
     $("sAskFps").value = s.autoskipFps; $("vAskFps").textContent = s.autoskipFps;
