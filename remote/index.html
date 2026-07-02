@@ -44,6 +44,9 @@
       <div class="workshoprow">
         <button class="wsbtn" id="btnCapture">✎ Edit this preset in Workshop</button>
       </div>
+      <div class="workshoprow">
+        <button class="wsbtn danger" id="btnDislike">👎 Dislike — stop playing this</button>
+      </div>
       <div class="toggles">
         <button class="tk" id="tShuffle"><span class="lamp"></span><span class="k">Shuffle</span></button>
         <button class="tk" id="tLock"><span class="lamp"></span><span class="k">Lock</span></button>
@@ -137,6 +140,10 @@
     <div class="set flexrow" id="blockedRow" style="display:none">
       <div><b>Blocked presets</b><div class="desc" style="margin:5px 0 0">Presets that hung the GPU and were auto-skipped. Cleared ones return on the next pack switch.</div></div>
       <button class="readout btnish" id="btnClearBlock"><span id="blockedCount">0</span> · Clear</button>
+    </div>
+    <div class="set flexrow" id="dislikedRow" style="display:none">
+      <div><b>Disliked presets</b><div class="desc" style="margin:5px 0 0">Presets you disliked. Cleared ones return on the next pack switch.</div></div>
+      <button class="readout btnish" id="btnClearDislikes"><span id="dislikedCount">0</span> · Clear</button>
     </div>
   </section>
 </div>

@@ -242,6 +242,18 @@ void RemoteControl::RegisterRoutes()
         res.set_content("{\"ok\":true}", "application/json");
     });
 
+    _server->Post("/api/dislike", [this, guard](const httplib::Request& req, httplib::Response& res) {
+        if (!guard(req, res)) { return; }
+        Enqueue(Command{CommandType::DislikeCurrent, "", ""});
+        res.set_content("{\"ok\":true}", "application/json");
+    });
+
+    _server->Post("/api/dislikes/clear", [this, guard](const httplib::Request& req, httplib::Response& res) {
+        if (!guard(req, res)) { return; }
+        Enqueue(Command{CommandType::ClearDislikes, "", ""});
+        res.set_content("{\"ok\":true}", "application/json");
+    });
+
     // In-remote preset editor.
     _server->Get("/api/workshop/source", [this, guard](const httplib::Request& req, httplib::Response& res) {
         if (!guard(req, res)) { return; }
@@ -412,6 +424,13 @@ void RemoteControl::DrainCommands()
                 app.getSubsystem<ProjectMWrapper>().LoadPresetFile(command.arg);
                 _workshopActive = true;
                 _workshopPath = command.arg;
+                break;
+            case CommandType::DislikeCurrent:
+                _workshopActive = false;
+                app.getSubsystem<ProjectMWrapper>().DislikeCurrent();
+                break;
+            case CommandType::ClearDislikes:
+                app.getSubsystem<ProjectMWrapper>().ClearDislikes();
                 break;
         }
     }
@@ -662,6 +681,7 @@ void RemoteControl::PublishStatus(const ProjectMWrapper::PlaybackStatus& status,
          << "\"favoritesShuffle\":" << (_favShuffle.load() ? "true" : "false") << ","
          << "\"workshop\":" << (_workshopActive ? "true" : "false") << ","
          << "\"blocked\":" << ProjectMSDLApplication::instance().getSubsystem<ProjectMWrapper>().BlockedCount() << ","
+         << "\"disliked\":" << ProjectMSDLApplication::instance().getSubsystem<ProjectMWrapper>().DislikedCount() << ","
          << "\"fps\":" << static_cast<int>(_fps + 0.5f) << ","
          << "\"cpu\":" << static_cast<int>(_cpuPct + 0.5f) << ","
          << "\"memUsed\":" << _memUsedMB << ","

@@ -139,6 +139,9 @@ async function refresh() {
     const blocked = s.blocked || 0;
     $("blockedRow").style.display = blocked > 0 ? "" : "none";
     $("blockedCount").textContent = blocked;
+    const disliked = s.disliked || 0;
+    $("dislikedRow").style.display = disliked > 0 ? "" : "none";
+    $("dislikedCount").textContent = disliked;
     // System monitor
     if (s.fps !== undefined) $("stFps").textContent = s.fps;
     if (s.cpu !== undefined) $("stCpu").textContent = s.cpu;
@@ -189,6 +192,8 @@ $("edApply").onclick = applyEdit;
 $("edSave").onclick = saveEdit;
 $("btnAudio").onclick = () => { POST("/api/audio/next"); setTimeout(refresh, 600); };
 $("btnClearBlock").onclick = () => { POST("/api/blocklist/clear"); setTimeout(refresh, 500); };
+$("btnDislike").onclick = () => { POST("/api/dislike"); setTimeout(refresh, 500); };
+$("btnClearDislikes").onclick = () => { POST("/api/dislikes/clear"); setTimeout(refresh, 500); };
 
 /* ---------- settings ---------- */
 const fmt1 = (n) => Math.round(n * 100) / 100;

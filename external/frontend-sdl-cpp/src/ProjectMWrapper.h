@@ -136,6 +136,15 @@ public:
      */
     void ClearBlocklist();
 
+    /** @brief Adds the currently-playing preset to the dislike list, removes it, and advances. */
+    void DislikeCurrent();
+
+    /** @brief Number of presets on the dislike list. */
+    uint32_t DislikedCount() const;
+
+    /** @brief Clears the dislike list (disliked presets return on the next pack load/restart). */
+    void ClearDislikes();
+
     /**
      * @brief Records that the current preset ran too slowly and skips it. Increments a persistent
      * per-preset strike count; once it reaches @p strikesThreshold the preset is blocklisted and
@@ -170,7 +179,9 @@ private:
 
     // GPU-hang auto-skip: quarantine presets that crash/hang the app. Render thread only.
     void LoadBlocklist();                          //!< Read blocklist file into memory.
-    void ApplyBlocklist();                         //!< Remove blocklisted entries from the playlist.
+    void ApplyRemovalLists();                      //!< Remove blocklisted OR disliked entries from the playlist.
+    void LoadDislikes();                           //!< Read the dislike file into memory.
+    void AddToDislikes(const std::string& path);   //!< Add a path to the dislike list (memory + file).
     void AddToBlocklist(const std::string& path);  //!< Add a path to the blocklist (memory + file).
     void WriteBreadcrumb(const std::string& path); //!< Record the active preset (crash breadcrumb).
     void ClearBreadcrumb();                        //!< Remove the breadcrumb on clean shutdown.
@@ -180,6 +191,8 @@ private:
 
     std::set<std::string> _blocklist;   //!< Preset paths that hang/kill the app.
     std::string _blocklistPath;         //!< ~/.local/share/dropkick/blocklist.txt
+    std::set<std::string> _dislikes;    //!< Preset paths the user disliked.
+    std::string _dislikePath;           //!< ~/.local/share/dropkick/dislikes.txt
     std::string _breadcrumbPath;        //!< ~/.local/share/dropkick/state/loading
     std::map<std::string, uint32_t> _slowCounts; //!< Preset path -> low-FPS auto-skip strikes.
     std::string _slowCountsPath;                 //!< ~/.local/share/dropkick/slowcounts.txt
