@@ -205,11 +205,21 @@ async function loadSettings() {
     $("tAspect").classList.toggle("on", !!s.aspectCorrection);
     $("sFlash").value = s.flashStrength; $("vFlash").textContent = fmt1(s.flashStrength);
     $("tFlash").classList.toggle("on", !!s.reduceFlashing);
+    $("sBright").value = s.brightness; $("vBright").textContent = Math.round(s.brightness * 100);
+    $("tTint").classList.toggle("on", !!s.tintEnabled);
+    $("tintColor").value = s.tintColor || "#00ff00";
+    $("sTintS").value = s.tintStrength; $("vTintS").textContent = Math.round(s.tintStrength * 100);
   } catch (e) {}
 }
 const valueLabel = { sDur: "vDur", sSoft: "vSoft", sBeat: "vBeat", sHardS: "vHardS", sHardD: "vHardD", sFps: "vFps", sFlash: "vFlash" };
 for (const [sid, vid] of Object.entries(valueLabel)) {
   $(sid).addEventListener("input", () => { $(vid).textContent = fmt1(parseFloat($(sid).value)); });
+  $(sid).addEventListener("change", () => POST(`/api/settings?key=${$(sid).dataset.key}&value=${$(sid).value}`));
+}
+// Percent-labelled sliders (0..1 shown as 0..100%).
+const pctLabel = { sBright: "vBright", sTintS: "vTintS" };
+for (const [sid, vid] of Object.entries(pctLabel)) {
+  $(sid).addEventListener("input", () => { $(vid).textContent = Math.round(parseFloat($(sid).value) * 100); });
   $(sid).addEventListener("change", () => POST(`/api/settings?key=${$(sid).dataset.key}&value=${$(sid).value}`));
 }
 $("tHard").onclick = () => {
@@ -227,6 +237,21 @@ $("tFlash").onclick = () => {
   $("tFlash").classList.toggle("on", on);
   POST(`/api/settings?key=reduceFlashing&value=${on}`);
 };
+$("tTint").onclick = () => {
+  const on = !$("tTint").classList.contains("on");
+  $("tTint").classList.toggle("on", on);
+  POST(`/api/settings?key=tintEnabled&value=${on}`);
+};
+$("tintColor").addEventListener("change", () => {
+  POST(`/api/settings?key=tintColor&value=${encodeURIComponent($("tintColor").value.replace("#", ""))}`);
+});
+document.querySelectorAll("#tintSwatches .swatch").forEach(sw => sw.onclick = () => {
+  const col = sw.dataset.color;
+  $("tintColor").value = col;
+  $("tTint").classList.add("on");
+  POST(`/api/settings?key=tintColor&value=${encodeURIComponent(col.replace("#", ""))}`);
+  POST(`/api/settings?key=tintEnabled&value=true`);
+});
 
 /* ---------- packs ---------- */
 async function loadPacks() {
