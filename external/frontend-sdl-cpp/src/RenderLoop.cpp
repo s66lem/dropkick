@@ -47,15 +47,19 @@ void RenderLoop::Run()
         // Watchdog: if rendering a preset takes absurdly long, the V3D GPU likely hung on it.
         // Quarantine it and move on (best-effort — a hard hang kills us and the supervisor
         // + startup quarantine handle that instead). 4s is well above a legit heavy first frame.
-        _strobe.SetEnabled(_userConfig->getBool("reduceFlashing", false));
-        _strobe.SetStrength(static_cast<float>(_userConfig->getDouble("flashStrength", 0.6)));
+        _post.SetReduceFlashing(_userConfig->getBool("reduceFlashing", false));
+        _post.SetStrength(static_cast<float>(_userConfig->getDouble("flashStrength", 0.6)));
+        _post.SetBrightness(static_cast<float>(_userConfig->getDouble("brightness", 1.0)));
+        _post.SetTint(_userConfig->getBool("tintEnabled", false),
+                      _userConfig->getString("tintColor", "#00ff00"),
+                      static_cast<float>(_userConfig->getDouble("tintStrength", 1.0)));
 
         Uint32 renderStart = SDL_GetTicks();
-        if (_strobe.Enabled())
+        if (_post.Active())
         {
-            _strobe.Begin(_renderWidth, _renderHeight);
-            _projectMWrapper.RenderFrame(_strobe.SceneFbo()); // SceneFbo()==0 if setup failed -> backbuffer
-            _strobe.Composite();
+            _post.Begin(_renderWidth, _renderHeight);
+            _projectMWrapper.RenderFrame(_post.SceneFbo()); // SceneFbo()==0 if setup failed -> backbuffer
+            _post.Composite();
         }
         else
         {

@@ -4,7 +4,7 @@
 #include "ProjectMWrapper.h"
 #include "RemoteControl.h"
 #include "SDLRenderingWindow.h"
-#include "StrobeFilter.h"
+#include "PostProcess.h"
 
 #include "notifications/QuitNotification.h"
 
@@ -97,7 +97,7 @@ protected:
 
     Poco::AutoPtr<Poco::Util::AbstractConfiguration> _userConfig; //!< View of the "projectM" configuration subkey in the "user" configuration.
 
-    StrobeFilter _strobe; //!< Optional "reduce flashing" post-process (off unless enabled in settings).
+    PostProcess _post; //!< Fullscreen post-process (persistence/brightness/tint); inert unless an effect is on.
 
     Poco::Logger& _logger{Poco::Logger::get("RenderLoop")}; //!< The class logger.
 };
