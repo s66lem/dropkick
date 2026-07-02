@@ -179,9 +179,11 @@ async function loadSettings() {
     $("sFps").value = s.fps; $("vFps").textContent = s.fps;
     $("tHard").classList.toggle("on", !!s.hardCut);
     $("tAspect").classList.toggle("on", !!s.aspectCorrection);
+    $("sFlash").value = s.flashStrength; $("vFlash").textContent = fmt1(s.flashStrength);
+    $("tFlash").classList.toggle("on", !!s.reduceFlashing);
   } catch (e) {}
 }
-const valueLabel = { sDur: "vDur", sSoft: "vSoft", sBeat: "vBeat", sHardS: "vHardS", sHardD: "vHardD", sFps: "vFps" };
+const valueLabel = { sDur: "vDur", sSoft: "vSoft", sBeat: "vBeat", sHardS: "vHardS", sHardD: "vHardD", sFps: "vFps", sFlash: "vFlash" };
 for (const [sid, vid] of Object.entries(valueLabel)) {
   $(sid).addEventListener("input", () => { $(vid).textContent = fmt1(parseFloat($(sid).value)); });
   $(sid).addEventListener("change", () => POST(`/api/settings?key=${$(sid).dataset.key}&value=${$(sid).value}`));
@@ -195,6 +197,11 @@ $("tAspect").onclick = () => {
   const on = !$("tAspect").classList.contains("on");
   $("tAspect").classList.toggle("on", on);
   POST(`/api/settings?key=aspectCorrection&value=${on}`);
+};
+$("tFlash").onclick = () => {
+  const on = !$("tFlash").classList.contains("on");
+  $("tFlash").classList.toggle("on", on);
+  POST(`/api/settings?key=reduceFlashing&value=${on}`);
 };
 
 /* ---------- packs ---------- */

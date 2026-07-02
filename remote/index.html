@@ -86,6 +86,12 @@
       <div class="tg"><span class="label">Aspect correction</span><div class="sw" id="tAspect"></div></div>
       <div class="desc">Keep shapes proportioned to the screen.</div>
     </div>
+    <div class="set">
+      <div class="tg"><b>Reduce flashing</b><div class="sw" id="tFlash"></div></div>
+      <div class="desc">Limits how fast the picture can brighten between frames, easing strobe-like presets. Softens the look a little.</div>
+      <div class="h mt"><span class="label">Strength</span><span class="readout" id="vFlash">—</span></div>
+      <input type="range" id="sFlash" data-key="flashStrength" min="0" max="1" step="0.05">
+    </div>
     <div class="set flexrow">
       <div><b>Pack</b><div class="label mt" id="packName">—</div></div>
       <select id="packs" class="packsel"></select>
