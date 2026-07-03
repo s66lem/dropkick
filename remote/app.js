@@ -185,14 +185,20 @@ async function saveEdit() {
   await fetch(withToken("/api/workshop/save?name=" + encodeURIComponent(name)), { method: "POST", body: $("edText").value });
   $("edMsg").textContent = "Saved " + name;
 }
-$("btnCapture").textContent = "✎ Edit this preset";
 $("btnCapture").onclick = openEditor;
 $("edClose").onclick = () => $("editor").classList.remove("on");
 $("edApply").onclick = applyEdit;
 $("edSave").onclick = saveEdit;
 $("btnAudio").onclick = () => { POST("/api/audio/next"); setTimeout(refresh, 600); };
 $("btnClearBlock").onclick = () => { POST("/api/blocklist/clear"); setTimeout(refresh, 500); };
-$("btnDislike").onclick = () => { POST("/api/dislike"); setTimeout(refresh, 500); };
+$("btnDislike").onclick = (e) => {
+  e.stopPropagation();               // don't also toggle the screen's path-reveal
+  const b = $("btnDislike");
+  b.classList.add("flash");
+  setTimeout(() => b.classList.remove("flash"), 600);
+  POST("/api/dislike");
+  setTimeout(refresh, 500);
+};
 $("btnClearDislikes").onclick = () => { POST("/api/dislikes/clear"); setTimeout(refresh, 500); };
 
 /* ---------- settings ---------- */

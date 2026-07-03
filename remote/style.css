@@ -83,12 +83,17 @@ body{background:var(--paper);color:var(--ink);font-family:"Space Grotesk",system
 .set .h b{font-size:14px;font-weight:600}
 .set.flexrow{display:flex;justify-content:space-between;align-items:center;gap:10px}
 .desc{font-size:12px;color:var(--muted);margin:-4px 0 12px;line-height:1.35}
-.workshoprow{border-top:1px solid var(--line)}
-.wsbtn{width:100%;border:none;background:var(--panel);color:var(--ink);padding:14px;cursor:pointer;
+/* Browse-tab "edit current preset" toolbar button (matches the search box) */
+.browse-edit{width:100%;margin-top:10px;border:1px solid var(--line);background:var(--panel);color:var(--ink);
+  border-radius:10px;padding:12px 14px;cursor:pointer;text-align:left;
   font-family:"JetBrains Mono";font-size:12px;letter-spacing:.04em}
-.wsbtn:active{background:var(--key-active)}
-.wsbtn.done{color:var(--orange)}
-.wsbtn.danger{color:#ff6b6b}
+.browse-edit:active{background:var(--key-active)}
+/* dislike icon in the preset screen header */
+.shead{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.dislike{background:none;border:none;padding:4px;margin:-4px -4px 0 0;cursor:pointer;line-height:0;
+  -webkit-tap-highlight-color:transparent}
+.dislike svg{width:20px;height:20px;fill:none;stroke:var(--screen-mut);stroke-width:1.8;transition:stroke .15s}
+.dislike:active svg,.dislike.flash svg{stroke:#ff6b6b}
 #nowLabel.editing{color:var(--orange)}
 /* in-remote preset editor */
 .editor-overlay{display:none;position:fixed;inset:0;z-index:30;background:var(--paper);
@@ -145,7 +150,9 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:26px;heigh
   #browseList .chead,#favList .chead,#favList .hint,#browseList .hint{grid-column:1 / -1}
   .row{margin-bottom:0}
   /* Settings in two columns to use the width. */
-  section[data-view="set"]{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}
+  /* Only lay out as a grid when the settings view is actually active — otherwise
+     this display:grid would outrank .view{display:none} and leak into other tabs. */
+  .view.on[data-view="set"]{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}
   section[data-view="set"] .set{margin-top:0}
   .tabs{max-width:760px;border-radius:0}
   #edText{font-size:14px;padding:20px 28px}

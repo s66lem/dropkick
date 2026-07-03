@@ -31,7 +31,10 @@
     <div class="panel">
       <div class="phead"><span class="n" id="nowLabel">NOW PLAYING</span><span class="n" id="pos">— / —</span></div>
       <div class="screen" id="screen">
-        <div class="idx" id="posIdx">▸ POS —</div>
+        <div class="shead">
+          <div class="idx" id="posIdx">▸ POS —</div>
+          <button class="dislike" id="btnDislike" title="Dislike — stop playing this" aria-label="Dislike this preset — stop playing it"><svg viewBox="0 0 24 24"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/></svg></button>
+        </div>
         <div class="pname" id="pname">—</div>
         <div class="ppath" id="ppath"></div>
         <span class="cat" id="pcat">—</span>
@@ -40,12 +43,6 @@
         <button class="key" id="btnPrev"><svg viewBox="0 0 24 24"><path d="M18 6v12L9 12zM7 6v12"/></svg><span class="k">Prev</span></button>
         <button class="key accent" id="btnNext"><svg viewBox="0 0 24 24"><path d="M6 6l12 6-12 6z"/></svg><span class="k">Next</span></button>
         <button class="key accent" id="btnRandom"><svg viewBox="0 0 24 24"><path d="M4 7h4l8 10h4M14 7h6M4 17h4l3-4"/></svg><span class="k">Random</span></button>
-      </div>
-      <div class="workshoprow">
-        <button class="wsbtn" id="btnCapture">✎ Edit this preset in Workshop</button>
-      </div>
-      <div class="workshoprow">
-        <button class="wsbtn danger" id="btnDislike">👎 Dislike — stop playing this</button>
       </div>
       <div class="toggles">
         <button class="tk" id="tShuffle"><span class="lamp"></span><span class="k">Shuffle</span></button>
@@ -58,6 +55,7 @@
   <!-- BROWSE -->
   <section class="view" data-view="browse">
     <input class="search" id="search" placeholder="search presets…">
+    <button class="browse-edit" id="btnCapture">✎ Edit current preset in Workshop</button>
     <div id="browseList"></div>
   </section>
 
