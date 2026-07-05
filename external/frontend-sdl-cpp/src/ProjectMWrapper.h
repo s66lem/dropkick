@@ -177,6 +177,8 @@ private:
      */
     void OnConfigurationPropertyRemoved(const std::string& key);
 
+    std::string CurrentPresetPath() const; //!< Path of the currently-playing playlist item ("" if none).
+
     // GPU-hang auto-skip: quarantine presets that crash/hang the app. Render thread only.
     void LoadBlocklist();                          //!< Read blocklist file into memory.
     void ApplyRemovalLists();                      //!< Remove blocklisted OR disliked entries from the playlist.
@@ -205,5 +207,5 @@ private:
 
     Poco::NObserver<ProjectMWrapper, PlaybackControlNotification> _playbackControlNotificationObserver{*this, &ProjectMWrapper::PlaybackControlNotificationHandler};
 
-    Poco::Logger& _logger{Poco::Logger::get("SDLRenderingWindow")}; //!< The class logger.
+    Poco::Logger& _logger{Poco::Logger::get("ProjectMWrapper")}; //!< The class logger.
 };

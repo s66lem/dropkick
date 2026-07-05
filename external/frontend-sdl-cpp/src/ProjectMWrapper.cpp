@@ -20,6 +20,22 @@
 #include <fstream>
 #include <vector>
 
+namespace
+{
+/** Reads a newline-separated list file into a set (used for the blocklist and dislikes). */
+void LoadLineSet(const std::string& filePath, std::set<std::string>& out)
+{
+    out.clear();
+    std::ifstream in(filePath);
+    std::string line;
+    while (std::getline(in, line))
+    {
+        if (!line.empty() && line.back() == '\r') { line.pop_back(); }
+        if (!line.empty()) { out.insert(line); }
+    }
+}
+} // namespace
+
 const char* ProjectMWrapper::name() const
 {
     return "ProjectM Wrapper";
@@ -323,14 +339,7 @@ void ProjectMWrapper::LoadPresetFile(const std::string& path) const
 
 void ProjectMWrapper::LoadBlocklist()
 {
-    _blocklist.clear();
-    std::ifstream in(_blocklistPath);
-    std::string line;
-    while (std::getline(in, line))
-    {
-        if (!line.empty() && line.back() == '\r') { line.pop_back(); }
-        if (!line.empty()) { _blocklist.insert(line); }
-    }
+    LoadLineSet(_blocklistPath, _blocklist);
 }
 
 void ProjectMWrapper::AddToBlocklist(const std::string& path)
@@ -396,15 +405,19 @@ void ProjectMWrapper::QuarantineFromCrash()
     std::remove(_breadcrumbPath.c_str());
 }
 
+std::string ProjectMWrapper::CurrentPresetPath() const
+{
+    if (!_playlist) { return {}; }
+    char* item = projectm_playlist_item(_playlist, projectm_playlist_get_position(_playlist));
+    std::string path = item ? item : "";
+    if (item) { projectm_playlist_free_string(item); }
+    return path;
+}
+
 void ProjectMWrapper::QuarantineCurrent()
 {
     if (!_playlist) { return; }
-    uint32_t pos = projectm_playlist_get_position(_playlist);
-    char* item = projectm_playlist_item(_playlist, pos);
-    std::string path = item ? item : "";
-    if (item) { projectm_playlist_free_string(item); }
-
-    AddToBlocklist(path);
+    AddToBlocklist(CurrentPresetPath());
     ClearBreadcrumb();
     projectm_playlist_play_next(_playlist, true); // move off the bad preset first
     ApplyRemovalLists();                          // then drop it (and any others) from the playlist
@@ -424,14 +437,7 @@ void ProjectMWrapper::ClearBlocklist()
 
 void ProjectMWrapper::LoadDislikes()
 {
-    _dislikes.clear();
-    std::ifstream in(_dislikePath);
-    std::string line;
-    while (std::getline(in, line))
-    {
-        if (!line.empty() && line.back() == '\r') { line.pop_back(); }
-        if (!line.empty()) { _dislikes.insert(line); }
-    }
+    LoadLineSet(_dislikePath, _dislikes);
 }
 
 void ProjectMWrapper::AddToDislikes(const std::string& path)
@@ -446,10 +452,7 @@ void ProjectMWrapper::AddToDislikes(const std::string& path)
 void ProjectMWrapper::DislikeCurrent()
 {
     if (!_playlist) { return; }
-    uint32_t pos = projectm_playlist_get_position(_playlist);
-    char* item = projectm_playlist_item(_playlist, pos);
-    std::string path = item ? item : "";
-    if (item) { projectm_playlist_free_string(item); }
+    std::string path = CurrentPresetPath();
     if (path.empty()) { return; }
 
     AddToDislikes(path);
@@ -495,10 +498,7 @@ void ProjectMWrapper::SaveSlowCounts()
 void ProjectMWrapper::AutoSkipSlow(uint32_t strikesThreshold)
 {
     if (!_playlist) { return; }
-    uint32_t pos = projectm_playlist_get_position(_playlist);
-    char* item = projectm_playlist_item(_playlist, pos);
-    std::string path = item ? item : "";
-    if (item) { projectm_playlist_free_string(item); }
+    std::string path = CurrentPresetPath();
     if (path.empty()) { return; }
 
     uint32_t strikes = ++_slowCounts[path];
@@ -638,7 +638,7 @@ void ProjectMWrapper::OnConfigurationPropertyRemoved(const std::string& key)
 
     if (key == "projectM.hardCutsEnabled")
     {
-        projectm_set_aspect_correction(_projectM, _projectMConfigView->getBool("hardCutsEnabled", false));
+        projectm_set_hard_cut_enabled(_projectM, _projectMConfigView->getBool("hardCutsEnabled", false));
     }
 
     if (key == "projectM.hardCutDuration")

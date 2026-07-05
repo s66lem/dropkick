@@ -3,6 +3,7 @@ const token = new URLSearchParams(location.search).get("token") || "";
 const withToken = (u) => token ? u + (u.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(token) : u;
 const GET = (u) => fetch(withToken(u)).then(r => r.json());
 const POST = (u) => fetch(withToken(u), { method: "POST" });
+const act = (u, delay = 400) => { POST(u); setTimeout(refresh, delay); };
 const $ = (id) => document.getElementById(id);
 const STAR = '<svg class="st" viewBox="0 0 24 24"><path d="M12 3l2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.8 6.1 21l1.2-6.5L2.5 9.9 9 9z"/></svg>';
 
@@ -65,6 +66,13 @@ async function loadFavorites() {
   try { favorites = new Set(await GET("/api/favorites")); } catch (e) {}
 }
 
+async function toggleFavorite(path) {
+  const r = await (await POST("/api/favorites/toggle?path=" + encodeURIComponent(path))).json();
+  if (r.favorited) favorites.add(path); else favorites.delete(path);
+  refresh();
+  return r.favorited;
+}
+
 /* ---------- rendering ---------- */
 function rowEl(x) {
   const row = document.createElement("div");
@@ -76,12 +84,9 @@ function rowEl(x) {
   star.classList.toggle("on", favorites.has(x.p));
   star.onclick = async (e) => {
     e.stopPropagation();
-    const r = await (await POST("/api/favorites/toggle?path=" + encodeURIComponent(x.p))).json();
-    if (r.favorited) favorites.add(x.p); else favorites.delete(x.p);
-    star.classList.toggle("on", r.favorited);
-    refresh();
+    star.classList.toggle("on", await toggleFavorite(x.p));
   };
-  row.onclick = () => { POST("/api/preset?index=" + x.i); setTimeout(refresh, 400); };
+  row.onclick = () => act("/api/preset?index=" + x.i);
   return row;
 }
 
@@ -151,18 +156,13 @@ async function refresh() {
 }
 
 $("screen").onclick = () => $("screen").classList.toggle("open");
-$("btnPrev").onclick = () => { POST("/api/prev"); setTimeout(refresh, 400); };
-$("btnNext").onclick = () => { POST("/api/next"); setTimeout(refresh, 400); };
-$("btnRandom").onclick = () => { POST("/api/random"); setTimeout(refresh, 400); };
-$("tShuffle").onclick = () => { POST("/api/shuffle"); setTimeout(refresh, 400); };
-$("tLock").onclick = () => { POST("/api/lock"); setTimeout(refresh, 400); };
-$("tFav").onclick = async () => {
-  if (!currentPath) return;
-  const r = await (await POST("/api/favorites/toggle?path=" + encodeURIComponent(currentPath))).json();
-  if (r.favorited) favorites.add(currentPath); else favorites.delete(currentPath);
-  refresh();
-};
-$("favShuffle").onclick = () => { POST("/api/favorites/shuffle"); setTimeout(refresh, 300); };
+$("btnPrev").onclick = () => act("/api/prev");
+$("btnNext").onclick = () => act("/api/next");
+$("btnRandom").onclick = () => act("/api/random");
+$("tShuffle").onclick = () => act("/api/shuffle");
+$("tLock").onclick = () => act("/api/lock");
+$("tFav").onclick = () => { if (currentPath) toggleFavorite(currentPath); };
+$("favShuffle").onclick = () => act("/api/favorites/shuffle", 300);
 async function openEditor() {
   const msg = $("edMsg"); msg.textContent = "Loading…";
   $("editor").classList.add("on");
@@ -189,17 +189,16 @@ $("btnCapture").onclick = openEditor;
 $("edClose").onclick = () => $("editor").classList.remove("on");
 $("edApply").onclick = applyEdit;
 $("edSave").onclick = saveEdit;
-$("btnAudio").onclick = () => { POST("/api/audio/next"); setTimeout(refresh, 600); };
-$("btnClearBlock").onclick = () => { POST("/api/blocklist/clear"); setTimeout(refresh, 500); };
+$("btnAudio").onclick = () => act("/api/audio/next", 600);
+$("btnClearBlock").onclick = () => act("/api/blocklist/clear", 500);
 $("btnDislike").onclick = (e) => {
   e.stopPropagation();               // don't also toggle the screen's path-reveal
   const b = $("btnDislike");
   b.classList.add("flash");
   setTimeout(() => b.classList.remove("flash"), 600);
-  POST("/api/dislike");
-  setTimeout(refresh, 500);
+  act("/api/dislike", 500);
 };
-$("btnClearDislikes").onclick = () => { POST("/api/dislikes/clear"); setTimeout(refresh, 500); };
+$("btnClearDislikes").onclick = () => act("/api/dislikes/clear", 500);
 
 /* ---------- settings ---------- */
 const fmt1 = (n) => Math.round(n * 100) / 100;
@@ -226,37 +225,28 @@ async function loadSettings() {
     $("sAskStr").value = s.autoskipStrikes; $("vAskStr").textContent = s.autoskipStrikes;
   } catch (e) {}
 }
+function bindSlider(sid, vid, fmt) {
+  $(sid).addEventListener("input", () => { $(vid).textContent = fmt(parseFloat($(sid).value)); });
+  $(sid).addEventListener("change", () => POST(`/api/settings?key=${$(sid).dataset.key}&value=${$(sid).value}`));
+}
 const valueLabel = { sDur: "vDur", sSoft: "vSoft", sBeat: "vBeat", sHardS: "vHardS", sHardD: "vHardD", sFps: "vFps", sFlash: "vFlash", sAskFps: "vAskFps", sAskStr: "vAskStr" };
-for (const [sid, vid] of Object.entries(valueLabel)) {
-  $(sid).addEventListener("input", () => { $(vid).textContent = fmt1(parseFloat($(sid).value)); });
-  $(sid).addEventListener("change", () => POST(`/api/settings?key=${$(sid).dataset.key}&value=${$(sid).value}`));
-}
+for (const [sid, vid] of Object.entries(valueLabel)) bindSlider(sid, vid, fmt1);
 // Percent-labelled sliders (0..1 shown as 0..100%).
-const pctLabel = { sBright: "vBright", sTintS: "vTintS" };
-for (const [sid, vid] of Object.entries(pctLabel)) {
-  $(sid).addEventListener("input", () => { $(vid).textContent = Math.round(parseFloat($(sid).value) * 100); });
-  $(sid).addEventListener("change", () => POST(`/api/settings?key=${$(sid).dataset.key}&value=${$(sid).value}`));
+bindSlider("sBright", "vBright", (v) => Math.round(v * 100));
+bindSlider("sTintS", "vTintS", (v) => Math.round(v * 100));
+
+function bindToggle(id, key) {
+  $(id).onclick = () => {
+    const on = !$(id).classList.contains("on");
+    $(id).classList.toggle("on", on);
+    POST(`/api/settings?key=${key}&value=${on}`);
+  };
 }
-$("tHard").onclick = () => {
-  const on = !$("tHard").classList.contains("on");
-  $("tHard").classList.toggle("on", on);
-  POST(`/api/settings?key=hardCut&value=${on}`);
-};
-$("tAspect").onclick = () => {
-  const on = !$("tAspect").classList.contains("on");
-  $("tAspect").classList.toggle("on", on);
-  POST(`/api/settings?key=aspectCorrection&value=${on}`);
-};
-$("tFlash").onclick = () => {
-  const on = !$("tFlash").classList.contains("on");
-  $("tFlash").classList.toggle("on", on);
-  POST(`/api/settings?key=reduceFlashing&value=${on}`);
-};
-$("tTint").onclick = () => {
-  const on = !$("tTint").classList.contains("on");
-  $("tTint").classList.toggle("on", on);
-  POST(`/api/settings?key=tintEnabled&value=${on}`);
-};
+bindToggle("tHard", "hardCut");
+bindToggle("tAspect", "aspectCorrection");
+bindToggle("tFlash", "reduceFlashing");
+bindToggle("tTint", "tintEnabled");
+bindToggle("tAutoskip", "autoskipEnabled");
 $("tintColor").addEventListener("change", () => {
   POST(`/api/settings?key=tintColor&value=${encodeURIComponent($("tintColor").value.replace("#", ""))}`);
 });
@@ -267,11 +257,6 @@ document.querySelectorAll("#tintSwatches .swatch").forEach(sw => sw.onclick = ()
   POST(`/api/settings?key=tintColor&value=${encodeURIComponent(col.replace("#", ""))}`);
   POST(`/api/settings?key=tintEnabled&value=true`);
 });
-$("tAutoskip").onclick = () => {
-  const on = !$("tAutoskip").classList.contains("on");
-  $("tAutoskip").classList.toggle("on", on);
-  POST(`/api/settings?key=autoskipEnabled&value=${on}`);
-};
 
 /* ---------- packs ---------- */
 async function loadPacks() {

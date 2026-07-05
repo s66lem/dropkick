@@ -142,32 +142,30 @@ void RemoteControl::RegisterRoutes()
         return true;
     };
 
+    // Guarded GET returning the JSON produced by a member function.
+    auto getJson = [this, guard](const char* path, std::string (RemoteControl::*fn)() const) {
+        _server->Get(path, [this, guard, fn](const httplib::Request& req, httplib::Response& res) {
+            if (!guard(req, res)) { return; }
+            res.set_content((this->*fn)(), "application/json");
+        });
+    };
+
+    // Guarded POST that just enqueues an argument-less command.
+    auto post = [this, guard](const char* path, CommandType type) {
+        _server->Post(path, [this, guard, type](const httplib::Request& req, httplib::Response& res) {
+            if (!guard(req, res)) { return; }
+            Enqueue(Command{type, "", ""});
+            res.set_content("{\"ok\":true}", "application/json");
+        });
+    };
+
     _server->set_mount_point("/", _webRoot); // serves index.html, app.js, style.css
 
-    _server->Get("/api/status", [this, guard](const httplib::Request& req, httplib::Response& res) {
-        if (!guard(req, res)) { return; }
-        res.set_content(StatusJson(), "application/json");
-    });
-
-    _server->Get("/api/packs", [this, guard](const httplib::Request& req, httplib::Response& res) {
-        if (!guard(req, res)) { return; }
-        res.set_content(PacksJson(), "application/json");
-    });
-
-    _server->Get("/api/presets", [this, guard](const httplib::Request& req, httplib::Response& res) {
-        if (!guard(req, res)) { return; }
-        res.set_content(PresetsJson(), "application/json");
-    });
-
-    _server->Get("/api/settings", [this, guard](const httplib::Request& req, httplib::Response& res) {
-        if (!guard(req, res)) { return; }
-        res.set_content(SettingsJson(), "application/json");
-    });
-
-    _server->Get("/api/favorites", [this, guard](const httplib::Request& req, httplib::Response& res) {
-        if (!guard(req, res)) { return; }
-        res.set_content(FavoritesJson(), "application/json");
-    });
+    getJson("/api/status", &RemoteControl::StatusJson);
+    getJson("/api/packs", &RemoteControl::PacksJson);
+    getJson("/api/presets", &RemoteControl::PresetsJson);
+    getJson("/api/settings", &RemoteControl::SettingsJson);
+    getJson("/api/favorites", &RemoteControl::FavoritesJson);
 
     _server->Post("/api/favorites/toggle", [this, guard](const httplib::Request& req, httplib::Response& res) {
         if (!guard(req, res)) { return; }
@@ -222,37 +220,16 @@ void RemoteControl::RegisterRoutes()
         res.set_content("{\"ok\":true}", "application/json");
     });
 
-    auto post = [this, guard](const char* path, CommandType type) {
-        _server->Post(path, [this, guard, type](const httplib::Request& req, httplib::Response& res) {
-            if (!guard(req, res)) { return; }
-            Enqueue(Command{type, "", ""});
-            res.set_content("{\"ok\":true}", "application/json");
-        });
-    };
-
-    _server->Post("/api/workshop/capture", [this, guard](const httplib::Request& req, httplib::Response& res) {
-        if (!guard(req, res)) { return; }
-        Enqueue(Command{CommandType::CaptureWorkshop, "", ""});
-        res.set_content("{\"ok\":true}", "application/json");
-    });
-
-    _server->Post("/api/blocklist/clear", [this, guard](const httplib::Request& req, httplib::Response& res) {
-        if (!guard(req, res)) { return; }
-        Enqueue(Command{CommandType::ClearBlocklist, "", ""});
-        res.set_content("{\"ok\":true}", "application/json");
-    });
-
-    _server->Post("/api/dislike", [this, guard](const httplib::Request& req, httplib::Response& res) {
-        if (!guard(req, res)) { return; }
-        Enqueue(Command{CommandType::DislikeCurrent, "", ""});
-        res.set_content("{\"ok\":true}", "application/json");
-    });
-
-    _server->Post("/api/dislikes/clear", [this, guard](const httplib::Request& req, httplib::Response& res) {
-        if (!guard(req, res)) { return; }
-        Enqueue(Command{CommandType::ClearDislikes, "", ""});
-        res.set_content("{\"ok\":true}", "application/json");
-    });
+    post("/api/workshop/capture", CommandType::CaptureWorkshop);
+    post("/api/blocklist/clear", CommandType::ClearBlocklist);
+    post("/api/dislike", CommandType::DislikeCurrent);
+    post("/api/dislikes/clear", CommandType::ClearDislikes);
+    post("/api/next", CommandType::Next);
+    post("/api/prev", CommandType::Previous);
+    post("/api/random", CommandType::Random);
+    post("/api/shuffle", CommandType::ToggleShuffle);
+    post("/api/lock", CommandType::ToggleLock);
+    post("/api/audio/next", CommandType::NextAudio);
 
     // In-remote preset editor.
     _server->Get("/api/workshop/source", [this, guard](const httplib::Request& req, httplib::Response& res) {
@@ -317,13 +294,6 @@ void RemoteControl::RegisterRoutes()
         out << req.body;
         res.set_content(std::string("{\"ok\":true,\"file\":\"") + JsonEscape(name) + "\"}", "application/json");
     });
-
-    post("/api/next", CommandType::Next);
-    post("/api/prev", CommandType::Previous);
-    post("/api/random", CommandType::Random);
-    post("/api/shuffle", CommandType::ToggleShuffle);
-    post("/api/lock", CommandType::ToggleLock);
-    post("/api/audio/next", CommandType::NextAudio);
 
     _server->Post("/api/pack", [this, guard](const httplib::Request& req, httplib::Response& res) {
         if (!guard(req, res)) { return; }
@@ -670,6 +640,10 @@ void RemoteControl::PublishStatus(const ProjectMWrapper::PlaybackStatus& status,
         favorited = _favorites.count(reportedPreset) > 0;
     }
 
+    auto& app = ProjectMSDLApplication::instance();
+    auto& wrapper = app.getSubsystem<ProjectMWrapper>();
+    auto& config = app.config();
+
     std::ostringstream json;
     json << "{"
          << "\"preset\":\"" << JsonEscape(reportedPreset) << "\","
@@ -680,8 +654,8 @@ void RemoteControl::PublishStatus(const ProjectMWrapper::PlaybackStatus& status,
          << "\"favorited\":" << (favorited ? "true" : "false") << ","
          << "\"favoritesShuffle\":" << (_favShuffle.load() ? "true" : "false") << ","
          << "\"workshop\":" << (_workshopActive ? "true" : "false") << ","
-         << "\"blocked\":" << ProjectMSDLApplication::instance().getSubsystem<ProjectMWrapper>().BlockedCount() << ","
-         << "\"disliked\":" << ProjectMSDLApplication::instance().getSubsystem<ProjectMWrapper>().DislikedCount() << ","
+         << "\"blocked\":" << wrapper.BlockedCount() << ","
+         << "\"disliked\":" << wrapper.DislikedCount() << ","
          << "\"fps\":" << static_cast<int>(_fps + 0.5f) << ","
          << "\"cpu\":" << static_cast<int>(_cpuPct + 0.5f) << ","
          << "\"memUsed\":" << _memUsedMB << ","
@@ -692,7 +666,7 @@ void RemoteControl::PublishStatus(const ProjectMWrapper::PlaybackStatus& status,
 
     // Settings snapshot (render thread — safe to query projectM here).
     std::ostringstream settings;
-    auto pm = ProjectMSDLApplication::instance().getSubsystem<ProjectMWrapper>().ProjectM();
+    auto pm = wrapper.ProjectM();
     if (pm)
     {
         settings << "{"
@@ -704,15 +678,15 @@ void RemoteControl::PublishStatus(const ProjectMWrapper::PlaybackStatus& status,
                  << "\"beatSensitivity\":" << projectm_get_beat_sensitivity(pm) << ","
                  << "\"fps\":" << projectm_get_fps(pm) << ","
                  << "\"aspectCorrection\":" << (projectm_get_aspect_correction(pm) ? "true" : "false") << ","
-                 << "\"reduceFlashing\":" << (ProjectMSDLApplication::instance().config().getBool("projectM.reduceFlashing", false) ? "true" : "false") << ","
-                 << "\"flashStrength\":" << ProjectMSDLApplication::instance().config().getDouble("projectM.flashStrength", 0.6) << ","
-                 << "\"brightness\":" << ProjectMSDLApplication::instance().config().getDouble("projectM.brightness", 1.0) << ","
-                 << "\"tintEnabled\":" << (ProjectMSDLApplication::instance().config().getBool("projectM.tintEnabled", false) ? "true" : "false") << ","
-                 << "\"tintColor\":\"" << JsonEscape(ProjectMSDLApplication::instance().config().getString("projectM.tintColor", "#00ff00")) << "\","
-                 << "\"tintStrength\":" << ProjectMSDLApplication::instance().config().getDouble("projectM.tintStrength", 1.0) << ","
-                 << "\"autoskipEnabled\":" << (ProjectMSDLApplication::instance().config().getBool("projectM.autoskipEnabled", true) ? "true" : "false") << ","
-                 << "\"autoskipFps\":" << ProjectMSDLApplication::instance().config().getDouble("projectM.autoskipFps", 20.0) << ","
-                 << "\"autoskipStrikes\":" << ProjectMSDLApplication::instance().config().getInt("projectM.autoskipStrikes", 3)
+                 << "\"reduceFlashing\":" << (config.getBool("projectM.reduceFlashing", false) ? "true" : "false") << ","
+                 << "\"flashStrength\":" << config.getDouble("projectM.flashStrength", 0.6) << ","
+                 << "\"brightness\":" << config.getDouble("projectM.brightness", 1.0) << ","
+                 << "\"tintEnabled\":" << (config.getBool("projectM.tintEnabled", false) ? "true" : "false") << ","
+                 << "\"tintColor\":\"" << JsonEscape(config.getString("projectM.tintColor", "#00ff00")) << "\","
+                 << "\"tintStrength\":" << config.getDouble("projectM.tintStrength", 1.0) << ","
+                 << "\"autoskipEnabled\":" << (config.getBool("projectM.autoskipEnabled", true) ? "true" : "false") << ","
+                 << "\"autoskipFps\":" << config.getDouble("projectM.autoskipFps", 20.0) << ","
+                 << "\"autoskipStrikes\":" << config.getInt("projectM.autoskipStrikes", 3)
                  << "}";
     }
     else
