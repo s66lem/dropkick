@@ -94,9 +94,19 @@ void RemoteControl::initialize(Poco::Util::Application& app)
     _workshopDir = config->getString("workshopDir",
                      Poco::Path::expand("~/.local/share/dropkick/workshop"));
 
+    if (_token.empty())
+    {
+        poco_warning(_logger, "Remote control is running WITHOUT a token: anyone on the network can "
+                              "control Dropkick and upload presets. Set remote.token "
+                              "(DROPKICK_REMOTE_TOKEN) to require authentication.");
+    }
+
     LoadFavorites();
 
     _server = std::make_unique<httplib::Server>();
+    // Presets are small text files; cap request bodies so an unauthenticated client can't
+    // exhaust memory/disk via /api/workshop/apply or /save.
+    _server->set_payload_max_length(1 * 1024 * 1024); // 1 MiB
     RegisterRoutes();
 
     _running = true;
@@ -119,7 +129,16 @@ void RemoteControl::uninitialize()
 
 bool RemoteControl::Authorized(const std::string& token) const
 {
-    return _token.empty() || token == _token;
+    if (_token.empty()) { return true; }
+    // Constant-time comparison to avoid leaking the token through response timing.
+    // (The length is allowed to leak, as is standard for fixed-secret comparisons.)
+    if (token.size() != _token.size()) { return false; }
+    unsigned char diff = 0;
+    for (size_t i = 0; i < _token.size(); ++i)
+    {
+        diff |= static_cast<unsigned char>(token[i]) ^ static_cast<unsigned char>(_token[i]);
+    }
+    return diff == 0;
 }
 
 void RemoteControl::Enqueue(const Command& command)

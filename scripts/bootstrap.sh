@@ -40,6 +40,11 @@ fi
 # Runtime env file sourced by the systemd unit (do not clobber an existing edited copy).
 if [ ! -f "$DATA/dropkick.env" ]; then
   install -Dm644 "$ROOT/config/dropkick.env" "$DATA/dropkick.env"
+  # Generate a random remote token so the phone remote isn't wide open to the whole
+  # LAN by default. Users who want an open remote can blank DROPKICK_REMOTE_TOKEN.
+  token="$(head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | cut -c1-24)"
+  sed -i "s#^DROPKICK_REMOTE_TOKEN=.*#DROPKICK_REMOTE_TOKEN=\"$token\"#" "$DATA/dropkick.env"
+  echo "Generated a remote-control token (see DROPKICK_REMOTE_TOKEN in $DATA/dropkick.env)."
 fi
 # Render projectMSDL.properties from dropkick.env (the config source of truth).
 "$ROOT/scripts/sync-config.sh"
@@ -56,4 +61,9 @@ update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
 
 echo "== Done. =="
 echo "Add presets to $DATA/presets/<pack>/ and textures to $DATA/textures/."
-echo "Start: dropkick    (or $PREFIX/bin/dropkick)   |   Remote: http://<pi-ip>:${DROPKICK_REMOTE_PORT:-8080}"
+# Read back the effective port/token for the remote URL hint.
+remote_port="$(sed -n 's#^DROPKICK_REMOTE_PORT="\{0,1\}\([^"]*\)"\{0,1\}#\1#p' "$DATA/dropkick.env")"
+remote_token="$(sed -n 's#^DROPKICK_REMOTE_TOKEN="\{0,1\}\([^"]*\)"\{0,1\}#\1#p' "$DATA/dropkick.env")"
+remote_url="http://<pi-ip>:${remote_port:-8080}"
+[ -n "$remote_token" ] && remote_url="$remote_url/?token=$remote_token"
+echo "Start: dropkick    (or $PREFIX/bin/dropkick)   |   Remote: $remote_url"

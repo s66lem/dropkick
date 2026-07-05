@@ -36,9 +36,13 @@ Leave `DROPKICK_AUDIO_SOURCE` empty for the default device; list devices with
     sudo loginctl enable-linger "$USER"
 
 ## 5. Phone remote
-On a phone on the same LAN, open `http://<pi-ip>:8080`.
-If a token is set (`remote.token` / `DROPKICK_REMOTE_TOKEN`), use
-`http://<pi-ip>:8080/?token=<token>`.
+`bootstrap.sh` generates a random remote token on first install (stored as
+`DROPKICK_REMOTE_TOKEN` in `~/.local/share/dropkick/dropkick.env`) so the remote
+isn't open to your whole LAN by default — the final bootstrap line prints the
+full URL. On a phone on the same LAN, open `http://<pi-ip>:8080/?token=<token>`.
+To run an open remote with no auth, blank `DROPKICK_REMOTE_TOKEN`, re-run
+`sync-config.sh`, and open `http://<pi-ip>:8080` (the app logs a warning while
+unauthenticated).
 
 ## Incremental rebuild after edits
     ./scripts/build.sh

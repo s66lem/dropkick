@@ -49,6 +49,21 @@ if (-not (Test-Path (Join-Path $Data "workshop\starter.milk"))) {
 }
 
 # The frontend loads <exe-dir>\projectMSDL.properties. Write it with Windows paths.
+$PropsPath = Join-Path $Prefix "bin\projectMSDL.properties"
+
+# Reuse an existing remote token if the properties file already has one, otherwise
+# generate a random one so the phone remote isn't wide open to the whole LAN by
+# default. Blank remote.token in the file to run an open remote.
+$Token = ""
+if (Test-Path $PropsPath) {
+    $existing = Select-String -Path $PropsPath -Pattern '^\s*remote\.token\s*=\s*(\S+)' | Select-Object -First 1
+    if ($existing) { $Token = $existing.Matches[0].Groups[1].Value }
+}
+if (-not $Token) {
+    $Token = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 24 | ForEach-Object { [char]$_ })
+    Write-Host "Generated a remote-control token: $Token"
+}
+
 $props = @"
 window.fullscreen = true
 projectM.presetPath = $DataFwd/presets/cream-of-the-crop
@@ -57,14 +72,15 @@ projectM.shuffleEnabled = true
 projectM.presetLocked = false
 audio.device =
 remote.port = 8080
-remote.token =
+remote.token = $Token
 remote.presetRoot = $DataFwd/presets
 remote.webRoot = $DataFwd/remote
 remote.workshopDir = $DataFwd/workshop
 "@
-$props | Out-File -FilePath (Join-Path $Prefix "bin\projectMSDL.properties") -Encoding ascii
+$props | Out-File -FilePath $PropsPath -Encoding ascii
 
+$RemoteQuery = if ($Token) { "/?token=$Token" } else { "" }
 Write-Host ""
 Write-Host "Done. Run:  $Prefix\bin\projectMSDL.exe"
-Write-Host "Remote:     http://localhost:8080  (or http://<this-pc-ip>:8080 from a phone)"
+Write-Host "Remote:     http://localhost:8080$RemoteQuery  (or http://<this-pc-ip>:8080$RemoteQuery from a phone)"
 Write-Host "Add presets under $Data\presets\cream-of-the-crop\"

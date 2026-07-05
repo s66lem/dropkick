@@ -1,10 +1,16 @@
 /* Dropkick remote v2 */
 const token = new URLSearchParams(location.search).get("token") || "";
-const withToken = (u) => token ? u + (u.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(token) : u;
-const GET = (u) => fetch(withToken(u)).then(r => r.json());
-const POST = (u) => fetch(withToken(u), { method: "POST" });
+// Send the token in a header, not the query string, so it doesn't leak into
+// server access logs, browser history, or Referer headers.
+const authHeaders = token ? { "X-Dropkick-Token": token } : {};
+const GET = (u) => fetch(u, { headers: authHeaders }).then(r => r.json());
+const POST = (u, body) => fetch(u, { method: "POST", headers: authHeaders, body });
 const act = (u, delay = 400) => { POST(u); setTimeout(refresh, delay); };
 const $ = (id) => document.getElementById(id);
+// Escape untrusted text (preset names come from the filesystem) before it goes
+// into innerHTML, to prevent a crafted preset filename from injecting markup.
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => (
+  { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const STAR = '<svg class="st" viewBox="0 0 24 24"><path d="M12 3l2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.8 6.1 21l1.2-6.5L2.5 9.9 9 9z"/></svg>';
 
 /* ---------- theme ---------- */
@@ -79,7 +85,7 @@ function rowEl(x) {
   row.className = "row" + (x.p === currentPath ? " now" : "");
   const sub = subOf(x.p);
   row.innerHTML = `<span class="ix">${String(x.i).padStart(4, "0")}</span>` +
-    `<span class="n">${nameOf(x.p)}${sub ? `<small>${sub}</small>` : ""}</span>` + STAR;
+    `<span class="n">${esc(nameOf(x.p))}${sub ? `<small>${esc(sub)}</small>` : ""}</span>` + STAR;
   const star = row.querySelector(".st");
   star.classList.toggle("on", favorites.has(x.p));
   star.onclick = async (e) => {
@@ -104,7 +110,7 @@ function renderBrowse() {
   for (const [cat, items] of groups) {
     const head = document.createElement("div");
     head.className = "chead";
-    head.innerHTML = `<span class="c">${openCats.has(cat) ? "▾ " : "▸ "}${cat}</span><span class="ct">${items.length}</span>`;
+    head.innerHTML = `<span class="c">${openCats.has(cat) ? "▾ " : "▸ "}${esc(cat)}</span><span class="ct">${items.length}</span>`;
     head.onclick = () => { openCats.has(cat) ? openCats.delete(cat) : openCats.add(cat); renderBrowse(); };
     host.appendChild(head);
     if (openCats.has(cat)) items.forEach(x => host.appendChild(rowEl(x)));
@@ -175,14 +181,14 @@ async function openEditor() {
 }
 async function applyEdit() {
   $("edMsg").textContent = "Applying…";
-  await fetch(withToken("/api/workshop/apply"), { method: "POST", body: $("edText").value });
+  await POST("/api/workshop/apply", $("edText").value);
   $("edMsg").textContent = "Applied — showing on screen.";
   setTimeout(refresh, 600);
 }
 async function saveEdit() {
   const name = prompt("Save as (in workshop/):", $("edName").textContent.replace(/^_scratch\.milk$/, "my-preset.milk"));
   if (!name) return;
-  await fetch(withToken("/api/workshop/save?name=" + encodeURIComponent(name)), { method: "POST", body: $("edText").value });
+  await POST("/api/workshop/save?name=" + encodeURIComponent(name), $("edText").value);
   $("edMsg").textContent = "Saved " + name;
 }
 $("btnCapture").onclick = openEditor;
