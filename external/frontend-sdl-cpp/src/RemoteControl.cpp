@@ -25,6 +25,21 @@ namespace fs = std::filesystem;
 
 namespace
 {
+/*
+ * Playlist items on Windows arrive with mixed separators (the configured preset
+ * root uses '/', the scanned tail '\'), which breaks the web app's '/'-based
+ * category parsing and favorite matching. Serve and store everything with forward
+ * slashes — Windows file APIs accept '/' fine. No-op elsewhere ('\' is a legal
+ * character in POSIX filenames, so never rewrite it there).
+ */
+std::string NormalizePathSeparators(std::string path)
+{
+#ifdef _WIN32
+    std::replace(path.begin(), path.end(), '\\', '/');
+#endif
+    return path;
+}
+
 std::string JsonEscape(const std::string& in)
 {
     std::string out;
@@ -85,14 +100,12 @@ void RemoteControl::initialize(Poco::Util::Application& app)
     auto config = app.config().createView("remote");
     _port = static_cast<uint16_t>(config->getInt("port", 8080));
     _token = config->getString("token", "");
-    _presetRoot = config->getString("presetRoot",
-                     Poco::Path::expand("~/.local/share/dropkick/presets"));
-    _webRoot = config->getString("webRoot",
-                     Poco::Path::expand("~/.local/share/dropkick/remote"));
-    _favoritesFile = config->getString("favoritesFile",
-                     Poco::Path::expand("~/.local/share/dropkick/favorites.json"));
-    _workshopDir = config->getString("workshopDir",
-                     Poco::Path::expand("~/.local/share/dropkick/workshop"));
+    // Poco::Path::expand() does not resolve "~" on Windows; home() works everywhere.
+    const std::string dataDir = Poco::Path::home() + ".local/share/dropkick/";
+    _presetRoot = config->getString("presetRoot", dataDir + "presets");
+    _webRoot = config->getString("webRoot", dataDir + "remote");
+    _favoritesFile = config->getString("favoritesFile", dataDir + "favorites.json");
+    _workshopDir = config->getString("workshopDir", dataDir + "workshop");
 
     if (_token.empty())
     {
@@ -435,9 +448,10 @@ void RemoteControl::RebuildPresetCache()
     json << "[";
     for (uint32_t i = 0; i < items.size(); ++i)
     {
-        _pathToIndex[items[i]] = i;
+        const std::string item = NormalizePathSeparators(items[i]);
+        _pathToIndex[item] = i;
         if (i) { json << ","; }
-        json << "{\"i\":" << i << ",\"p\":\"" << JsonEscape(items[i]) << "\"}";
+        json << "{\"i\":" << i << ",\"p\":\"" << JsonEscape(item) << "\"}";
     }
     json << "]";
 
@@ -648,7 +662,7 @@ void RemoteControl::SampleSystemStats()
 void RemoteControl::PublishStatus(const ProjectMWrapper::PlaybackStatus& status, const std::string& audioDevice, float fps)
 {
     _currentPath = status.presetName;
-    std::string reportedPreset = _workshopActive ? _workshopPath : status.presetName;
+    std::string reportedPreset = NormalizePathSeparators(_workshopActive ? _workshopPath : status.presetName);
 
     _fps = fps;
     long nowSec = static_cast<long>(::time(nullptr));
@@ -755,12 +769,13 @@ std::string RemoteControl::FavoritesJson() const
 
 bool RemoteControl::ToggleFavorite(const std::string& path)
 {
+    const std::string normalized = NormalizePathSeparators(path);
     bool nowFavorite;
     {
         std::lock_guard<std::mutex> lock(_favMutex);
-        auto it = _favorites.find(path);
+        auto it = _favorites.find(normalized);
         if (it != _favorites.end()) { _favorites.erase(it); nowFavorite = false; }
-        else { _favorites.insert(path); nowFavorite = true; }
+        else { _favorites.insert(normalized); nowFavorite = true; }
     }
     SaveFavorites();
     return nowFavorite;
@@ -774,7 +789,11 @@ void RemoteControl::LoadFavorites()
     buffer << in.rdbuf();
     auto paths = ParseStringArray(buffer.str());
     std::lock_guard<std::mutex> lock(_favMutex);
-    _favorites.insert(paths.begin(), paths.end());
+    // Normalize on load: migrates favorites saved with '\' separators by older builds.
+    for (const auto& path : paths)
+    {
+        _favorites.insert(NormalizePathSeparators(path));
+    }
 }
 
 void RemoteControl::SaveFavorites()

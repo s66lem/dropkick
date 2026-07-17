@@ -48,15 +48,17 @@ void ProjectMWrapper::initialize(Poco::Util::Application& app)
     _userConfig = projectMSDLApp.UserConfiguration();
     poco_information_f1(_logger, "Events enabled: %?d", _projectMConfigView->eventsEnabled());
 
-    _blocklistPath = Poco::Path::expand("~/.local/share/dropkick/blocklist.txt");
-    _breadcrumbPath = Poco::Path::expand("~/.local/share/dropkick/state/loading");
+    // Poco::Path::expand() does not resolve "~" on Windows; home() works everywhere.
+    const std::string dataDir = Poco::Path::home() + ".local/share/dropkick/";
+    _blocklistPath = dataDir + "blocklist.txt";
+    _breadcrumbPath = dataDir + "state/loading";
     LoadBlocklist();
     QuarantineFromCrash(); // if the previous run died mid-preset, blocklist that preset
 
-    _dislikePath = Poco::Path::expand("~/.local/share/dropkick/dislikes.txt");
+    _dislikePath = dataDir + "dislikes.txt";
     LoadDislikes();
 
-    _slowCountsPath = Poco::Path::expand("~/.local/share/dropkick/slowcounts.txt");
+    _slowCountsPath = dataDir + "slowcounts.txt";
     LoadSlowCounts();
 
     if (!_projectM)
