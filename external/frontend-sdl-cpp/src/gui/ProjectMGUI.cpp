@@ -209,6 +209,9 @@ void ProjectMGUI::ShowAboutWindow()
 
 void ProjectMGUI::ShowHelpWindow()
 {
+    // The help window is only drawn while the UI is visible (see Draw()), so make
+    // sure a bare F1 press with the UI hidden actually shows it.
+    _visible = true;
     _helpWindow.Show();
 }
 

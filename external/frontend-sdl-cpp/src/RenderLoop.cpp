@@ -5,10 +5,13 @@
 #include "gui/ProjectMGUI.h"
 
 #include <Poco/NotificationCenter.h>
+#include <Poco/Path.h>
 
 #include <Poco/Util/Application.h>
 
 #include <SDL2/SDL.h>
+
+#include <cstdio>
 
 #include "ProjectMSDLApplication.h"
 
@@ -76,7 +79,8 @@ void RenderLoop::Run()
             _presetStartTicks = SDL_GetTicks();
             _lowFpsStartTicks = 0; // fresh preset — reset the low-FPS window
         }
-        _remoteControl.PublishStatus(status, _audioCapture.AudioDeviceName(), limiter.FPS());
+        _lastFps = limiter.FPS();
+        _remoteControl.PublishStatus(status, _audioCapture.AudioDeviceName(), _lastFps);
         _projectMGui.Draw();
 
         _sdlRenderingWindow.Swap();
@@ -365,6 +369,19 @@ void RenderLoop::KeyEvent(const SDL_KeyboardEvent& event, bool down)
             {
                 _sdlRenderingWindow.ToggleFullscreen();
             }
+            else
+            {
+                // Favorite/unfavorite the current preset — same star list the remote uses.
+                auto* presetPath = projectm_playlist_item(_playlistHandle, projectm_playlist_get_position(_playlistHandle));
+                if (presetPath != nullptr)
+                {
+                    bool nowFavorite = _remoteControl.ToggleFavorite(presetPath);
+                    std::string presetName = Poco::Path(presetPath).getBaseName();
+                    Poco::NotificationCenter::defaultCenter().postNotification(new DisplayToastNotification(
+                        (nowFavorite ? "Favorited: " : "Unfavorited: ") + presetName));
+                    projectm_playlist_free_string(presetPath);
+                }
+            }
             break;
 
         case SDLK_i:
@@ -372,6 +389,10 @@ void RenderLoop::KeyEvent(const SDL_KeyboardEvent& event, bool down)
             {
                 _audioCapture.NextAudioDevice();
             }
+            break;
+
+        case SDLK_l:
+            Poco::NotificationCenter::defaultCenter().postNotification(new PlaybackControlNotification(PlaybackControlNotification::Action::TogglePresetLocked));
             break;
 
         case SDLK_m:
@@ -402,6 +423,13 @@ void RenderLoop::KeyEvent(const SDL_KeyboardEvent& event, bool down)
             }
             break;
 
+        case SDLK_s:
+            if (modifierPressed)
+            {
+                _sdlRenderingWindow.ToggleStretchMonitors();
+            }
+            break;
+
         case SDLK_y:
             Poco::NotificationCenter::defaultCenter().postNotification(new PlaybackControlNotification(PlaybackControlNotification::Action::ToggleShuffle));
             break;
@@ -423,6 +451,44 @@ void RenderLoop::KeyEvent(const SDL_KeyboardEvent& event, bool down)
             // Decrease beat sensitivity
             _projectMWrapper.ChangeBeatSensitivity(-0.01f);
             break;
+
+        case SDLK_F1:
+            _projectMGui.ShowHelpWindow();
+            _sdlRenderingWindow.ShowCursor(true);
+            break;
+
+        case SDLK_F3: {
+            // Show the current preset's name.
+            auto* presetPath = projectm_playlist_item(_playlistHandle, projectm_playlist_get_position(_playlistHandle));
+            if (presetPath != nullptr)
+            {
+                Poco::NotificationCenter::defaultCenter().postNotification(
+                    new DisplayToastNotification(Poco::Path(presetPath).getBaseName()));
+                projectm_playlist_free_string(presetPath);
+            }
+            break;
+        }
+
+        case SDLK_F4: {
+            // Show playback stats.
+            auto position = projectm_playlist_get_position(_playlistHandle);
+            auto playlistSize = projectm_playlist_size(_playlistHandle);
+            char stats[256];
+            std::snprintf(stats, sizeof(stats), "Preset %u/%u | Beat sensitivity %.2f | Audio: %s",
+                          playlistSize > 0 ? position + 1 : 0, playlistSize,
+                          projectm_get_beat_sensitivity(_projectMHandle),
+                          _audioCapture.AudioDeviceName().c_str());
+            Poco::NotificationCenter::defaultCenter().postNotification(new DisplayToastNotification(stats));
+            break;
+        }
+
+        case SDLK_F5: {
+            // Show current FPS.
+            char fps[32];
+            std::snprintf(fps, sizeof(fps), "%.0f FPS", _lastFps);
+            Poco::NotificationCenter::defaultCenter().postNotification(new DisplayToastNotification(fps));
+            break;
+        }
     }
 }
 

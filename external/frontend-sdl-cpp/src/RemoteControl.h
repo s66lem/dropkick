@@ -56,6 +56,9 @@ public:
     /** Refreshes status + settings snapshots served to HTTP clients. Render thread only. */
     void PublishStatus(const ProjectMWrapper::PlaybackStatus& status, const std::string& audioDevice, float fps);
 
+    /** Toggles a preset's favorite star. Thread-safe (own mutex); also used by the F hotkey. */
+    bool ToggleFavorite(const std::string& path);
+
 private:
     void RegisterRoutes();
     void Enqueue(const Command& command);
@@ -65,7 +68,6 @@ private:
     std::string PresetsJson() const;
     std::string SettingsJson() const;
     std::string FavoritesJson() const;
-    bool ToggleFavorite(const std::string& path);
     void LoadFavorites();
     void SaveFavorites();
     void RebuildPresetCache();       //!< Render thread only.

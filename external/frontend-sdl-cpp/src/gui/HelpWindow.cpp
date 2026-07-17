@@ -148,6 +148,10 @@ void HelpWindow::FillCommandLineArgumentTable()
 void HelpWindow::FillKeyboardShortcutsTable()
 {
     _shortcuts = {
+        {"Show This Help Window", "F1"},
+        {"Show Preset Name", "F3"},
+        {"Show Stats", "F4"},
+        {"Show FPS", "F5"},
         {"Quit projectM", "Ctrl+q"},
         {"Toggle Menu/UI", "Escape"},
         {"Next Preset in Playlist (immediate)", "n"},
@@ -158,12 +162,14 @@ void HelpWindow::FillKeyboardShortcutsTable()
         {"Last Played Preset (Back, smooth)", "Shift+Backspace"},
         {"Random Preset (immediate)", "r"},
         {"Random Preset (smooth)", "Shift+r"},
-        {"Lock Current Preset", "Spacebar"},
+        {"Lock Current Preset", "Spacebar or l"},
+        {"Favorite Current Preset", "f"},
         {"Toggle Shuffle", "y"},
         {"Toggle Fullscreen", "Ctrl-f, Right Mouse"},
         {"Toggle Aspect Correction", "Ctrl-a"},
         {"Next Audio Input Device", "Ctrl-i"},
         {"Move to Next Monitor", "Ctrl-m"},
+        {"Stretch Across All Monitors", "Ctrl-s"},
         {"Increase Beat Sensitivity by 1%", "Cursor Up"},
         {"Decrease Beat Sensitivity by 1%", "Cursor Down"},
         {"Add Random Waveform at Mouse Pointer", "Shift+Left Mouse"},

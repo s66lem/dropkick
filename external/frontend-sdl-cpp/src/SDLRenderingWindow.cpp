@@ -132,6 +132,49 @@ void SDLRenderingWindow::ShowCursor(bool visible)
     SDL_ShowCursor(visible);
 }
 
+void SDLRenderingWindow::ToggleStretchMonitors()
+{
+    if (_stretched)
+    {
+        SDL_SetWindowBordered(_renderingWindow, _config->getBool("borderless", false) ? SDL_FALSE : SDL_TRUE);
+        SDL_SetWindowSize(_renderingWindow, _stretchRestoreWidth, _stretchRestoreHeight);
+        SDL_SetWindowPosition(_renderingWindow, _stretchRestoreLeft, _stretchRestoreTop);
+        _stretched = false;
+        poco_debug(_logger, "Restored window from stretched mode.");
+        return;
+    }
+
+    if (_fullscreen)
+    {
+        Windowed();
+    }
+
+    auto numDisplays = SDL_GetNumVideoDisplays();
+    SDL_Rect bounds;
+    if (numDisplays < 1 || SDL_GetDisplayBounds(0, &bounds) != 0)
+    {
+        return;
+    }
+    for (int display = 1; display < numDisplays; display++)
+    {
+        SDL_Rect displayBounds;
+        if (SDL_GetDisplayBounds(display, &displayBounds) == 0)
+        {
+            SDL_UnionRect(&bounds, &displayBounds, &bounds);
+        }
+    }
+
+    SDL_GetWindowPosition(_renderingWindow, &_stretchRestoreLeft, &_stretchRestoreTop);
+    SDL_GetWindowSize(_renderingWindow, &_stretchRestoreWidth, &_stretchRestoreHeight);
+
+    SDL_SetWindowBordered(_renderingWindow, SDL_FALSE);
+    SDL_SetWindowPosition(_renderingWindow, bounds.x, bounds.y);
+    SDL_SetWindowSize(_renderingWindow, bounds.w, bounds.h);
+
+    _stretched = true;
+    poco_debug_f2(_logger, "Stretched window across all displays (%dx%d).", bounds.w, bounds.h);
+}
+
 void SDLRenderingWindow::NextDisplay()
 {
     auto numDisplays = SDL_GetNumVideoDisplays();

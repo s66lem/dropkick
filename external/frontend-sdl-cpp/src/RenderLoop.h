@@ -95,6 +95,8 @@ protected:
     int _renderWidth{0};
     int _renderHeight{0};
 
+    float _lastFps{0.0f}; //!< FPS of the last rendered frame (for the F5 stats toast).
+
     uint32_t _lastPlaylistPos{0xFFFFFFFFu}; //!< Last seen playlist position (preset-change detection).
     uint32_t _presetStartTicks{0};          //!< SDL ticks when the current preset started (grace window).
     uint32_t _lowFpsStartTicks{0};          //!< SDL ticks when FPS first dropped below threshold (0 = not low).

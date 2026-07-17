@@ -72,6 +72,12 @@ public:
     void NextDisplay();
 
     /**
+     * @brief Stretches the window across all connected displays, or restores the previous
+     *        windowed position/size if already stretched. Leaves fullscreen first if needed.
+     */
+    void ToggleStretchMonitors();
+
+    /**
      * @brief Returns the ID of the current display the window is shown on.
      * @return
      */
@@ -155,6 +161,12 @@ protected:
     int _lastWindowHeight{ 0 };
 
     bool _fullscreen{ false };
+
+    bool _stretched{ false };        //!< Window is stretched across all displays.
+    int _stretchRestoreLeft{ 0 };    //!< Window position/size to restore when leaving stretched mode.
+    int _stretchRestoreTop{ 0 };
+    int _stretchRestoreWidth{ 0 };
+    int _stretchRestoreHeight{ 0 };
 
 };
 
