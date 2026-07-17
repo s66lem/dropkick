@@ -39,6 +39,18 @@ cmake -S "$Root\external\frontend-sdl-cpp" -B "$Root\external\frontend-sdl-cpp\b
 cmake --build "$Root\external\frontend-sdl-cpp\build" --config Release
 cmake --install "$Root\external\frontend-sdl-cpp\build" --config Release
 
+# The frontend's install() drops projectMSDL.exe at the prefix root and does not
+# bundle its vcpkg runtime DLLs, while libprojectM installs its DLLs under bin\.
+# Stage one self-contained bin\ so the exe finds every DLL (and the configured
+# projectMSDL.properties written below) next to it.
+$FrontRel = "$Root\external\frontend-sdl-cpp\build\src\Release"
+$BinDir   = Join-Path $Prefix "bin"
+New-Item -ItemType Directory -Force -Path $BinDir | Out-Null
+Copy-Item "$FrontRel\projectMSDL.exe" $BinDir -Force
+Copy-Item "$FrontRel\*.dll" $BinDir -Force
+# Drop the stray prefix-root copies (exe beside a stub .properties, no DLLs).
+Remove-Item (Join-Path $Prefix "projectMSDL.exe"), (Join-Path $Prefix "projectMSDL.properties") -Force -ErrorAction SilentlyContinue
+
 Write-Host "== Data dirs, assets, config =="
 foreach ($d in "presets\cream-of-the-crop","textures","remote","workshop","state") {
     New-Item -ItemType Directory -Force -Path (Join-Path $Data $d) | Out-Null
@@ -64,8 +76,13 @@ if (-not $Token) {
     Write-Host "Generated a remote-control token: $Token"
 }
 
+# Windowed by default on Windows: a borderless-fullscreen window opened at launch
+# lands behind whatever has foreground and looks like the app died. Press F to
+# toggle fullscreen.
 $props = @"
-window.fullscreen = true
+window.fullscreen = false
+window.width = 1280
+window.height = 720
 projectM.presetPath = $DataFwd/presets/cream-of-the-crop
 projectM.texturePath = $DataFwd/textures
 projectM.shuffleEnabled = true
@@ -78,6 +95,13 @@ remote.webRoot = $DataFwd/remote
 remote.workshopDir = $DataFwd/workshop
 "@
 $props | Out-File -FilePath $PropsPath -Encoding ascii
+
+# A "dropkick" command, like the Linux launcher. %USERPROFILE%\.local\bin must be
+# on PATH for this to work from a shell.
+@"
+@echo off
+start "" /D "%~dp0" "%~dp0projectMSDL.exe" %*
+"@ | Out-File -FilePath (Join-Path $BinDir "dropkick.cmd") -Encoding ascii
 
 $RemoteQuery = if ($Token) { "/?token=$Token" } else { "" }
 Write-Host ""

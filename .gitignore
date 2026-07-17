@@ -2,6 +2,8 @@
 build/
 */build/
 install/
+# vcpkg toolchain clone (Windows bootstrap)
+vcpkg/
 # Editor
 .vscode/
 .idea/

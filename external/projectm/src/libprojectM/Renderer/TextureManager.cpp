@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <iterator>
 #include <memory>
 #include <random>
 #include <vector>
