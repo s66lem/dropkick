@@ -73,6 +73,7 @@ private:
     void RebuildPresetCache();       //!< Render thread only.
     void ApplySetting(const std::string& key, const std::string& value); //!< Render thread only.
     void JumpToFavorite(bool nextInOrder); //!< Render thread only.
+    void JumpToCategory();           //!< Render thread only — random preset within the shuffled category.
     void PollWorkshop();             //!< Render thread only — hot-reloads changed workshop presets.
     void CaptureToWorkshop();        //!< Render thread only — copies current preset into the workshop dir.
     void SampleSystemStats();        //!< Render thread only — refresh CPU/mem/temp (throttled ~1 Hz).
@@ -108,6 +109,11 @@ private:
     std::unordered_map<std::string, uint32_t> _pathToIndex; //!< Render thread only.
     std::atomic<bool> _presetsDirty{true};
     std::atomic<bool> _favShuffle{false};
+
+    // Category shuffle: play random presets from one category (directory) only.
+    mutable std::mutex _catMutex;
+    std::string _catShufflePrefix;   //!< Normalized directory prefix incl. trailing '/'; empty = off (guarded by _catMutex).
+    std::atomic<bool> _catShuffle{false}; //!< Cheap render-thread check mirroring !_catShufflePrefix.empty().
 
     // Workshop (preset authoring) — all render-thread only.
     std::string _workshopDir;

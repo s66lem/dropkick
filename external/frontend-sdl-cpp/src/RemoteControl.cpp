@@ -216,7 +216,39 @@ void RemoteControl::RegisterRoutes()
         if (!guard(req, res)) { return; }
         bool on = !_favShuffle.load();
         _favShuffle = on;
+        if (on) // the two shuffle modes are mutually exclusive
+        {
+            _catShuffle = false;
+            std::lock_guard<std::mutex> lock(_catMutex);
+            _catShufflePrefix.clear();
+        }
         res.set_content(std::string("{\"ok\":true,\"favoritesShuffle\":") + (on ? "true" : "false") + "}", "application/json");
+    });
+
+    _server->Post("/api/category/shuffle", [this, guard](const httplib::Request& req, httplib::Response& res) {
+        if (!guard(req, res)) { return; }
+        std::string path = NormalizePathSeparators(req.get_param_value("path"));
+        const std::string root = NormalizePathSeparators(_presetRoot);
+        if (path.empty() || path.find("..") != std::string::npos || path.rfind(root, 0) != 0)
+        {
+            res.status = 400;
+            res.set_content("{\"error\":\"invalid category path\"}", "application/json");
+            return;
+        }
+        if (path.back() != '/') { path += '/'; }
+        bool on;
+        {
+            std::lock_guard<std::mutex> lock(_catMutex);
+            if (_catShufflePrefix == path) { _catShufflePrefix.clear(); on = false; } // toggle off
+            else { _catShufflePrefix = path; on = true; }
+        }
+        _catShuffle = on;
+        if (on)
+        {
+            _favShuffle = false; // the two shuffle modes are mutually exclusive
+            Enqueue(Command{CommandType::Random, "", ""}); // jump into the category right away
+        }
+        res.set_content(std::string("{\"ok\":true,\"categoryShuffle\":") + (on ? "true" : "false") + "}", "application/json");
     });
 
     _server->Post("/api/preset", [this, guard](const httplib::Request& req, httplib::Response& res) {
@@ -366,6 +398,7 @@ void RemoteControl::DrainCommands()
             case CommandType::Next:
                 _workshopActive = false;
                 if (_favShuffle.load()) { JumpToFavorite(true); }
+                else if (_catShuffle.load()) { JumpToCategory(); }
                 else
                 {
                     center.postNotification(new PlaybackControlNotification(PlaybackControlNotification::Action::NextPreset));
@@ -378,6 +411,7 @@ void RemoteControl::DrainCommands()
             case CommandType::Random:
                 _workshopActive = false;
                 if (_favShuffle.load()) { JumpToFavorite(false); }
+                else if (_catShuffle.load()) { JumpToCategory(); }
                 else
                 {
                     center.postNotification(new PlaybackControlNotification(PlaybackControlNotification::Action::RandomPreset));
@@ -397,6 +431,11 @@ void RemoteControl::DrainCommands()
                 std::string path = _presetRoot + "/" + command.arg;
                 app.getSubsystem<ProjectMWrapper>().LoadPresetPack(path);
                 _presetsDirty = true;
+                _catShuffle = false; // playlist paths changed wholesale
+                {
+                    std::lock_guard<std::mutex> lock(_catMutex);
+                    _catShufflePrefix.clear();
+                }
                 break;
             }
             case CommandType::SetPosition:
@@ -408,6 +447,23 @@ void RemoteControl::DrainCommands()
                     if (index < projectm_playlist_size(playlist))
                     {
                         _workshopActive = false;
+                        // Explicitly picking a preset outside the shuffled category ends
+                        // category shuffle — otherwise the enforcement would yank it away.
+                        if (_catShuffle.load())
+                        {
+                            auto* item = projectm_playlist_item(playlist, index);
+                            if (item != nullptr)
+                            {
+                                const std::string itemPath = NormalizePathSeparators(item);
+                                projectm_playlist_free_string(item);
+                                std::lock_guard<std::mutex> lock(_catMutex);
+                                if (itemPath.rfind(_catShufflePrefix, 0) != 0)
+                                {
+                                    _catShufflePrefix.clear();
+                                    _catShuffle = false;
+                                }
+                            }
+                        }
                         projectm_playlist_set_position(playlist, index, true);
                     }
                 }
@@ -494,6 +550,35 @@ void RemoteControl::JumpToFavorite(bool nextInOrder)
         target = favoriteIndices[static_cast<size_t>(std::rand()) % favoriteIndices.size()];
     }
     projectm_playlist_set_position(playlist, target, true);
+}
+
+void RemoteControl::JumpToCategory()
+{
+    auto playlist = ProjectMSDLApplication::instance().getSubsystem<ProjectMWrapper>().Playlist();
+    if (!playlist) { return; }
+
+    std::string prefix;
+    {
+        std::lock_guard<std::mutex> lock(_catMutex);
+        prefix = _catShufflePrefix;
+    }
+    if (prefix.empty()) { return; }
+
+    std::vector<uint32_t> categoryIndices;
+    for (const auto& entry : _pathToIndex)
+    {
+        if (entry.first.rfind(prefix, 0) == 0) { categoryIndices.push_back(entry.second); }
+    }
+    if (categoryIndices.empty())
+    {
+        // Nothing playable in this category (e.g. pack changed) — turn the mode off
+        // rather than retrying every frame from the PublishStatus enforcement.
+        _catShuffle = false;
+        std::lock_guard<std::mutex> lock(_catMutex);
+        _catShufflePrefix.clear();
+        return;
+    }
+    projectm_playlist_set_position(playlist, categoryIndices[static_cast<size_t>(std::rand()) % categoryIndices.size()], true);
 }
 
 void RemoteControl::ApplySetting(const std::string& key, const std::string& value)
@@ -664,6 +749,22 @@ void RemoteControl::PublishStatus(const ProjectMWrapper::PlaybackStatus& status,
     _currentPath = status.presetName;
     std::string reportedPreset = NormalizePathSeparators(_workshopActive ? _workshopPath : status.presetName);
 
+    // Category shuffle: unlike the remote's Next/Random (handled in DrainCommands),
+    // projectM's own end-of-duration auto-advance roams the whole playlist. If it
+    // wandered out of the category, pull it back to a random in-category preset.
+    if (_catShuffle.load() && !_workshopActive && !reportedPreset.empty())
+    {
+        std::string prefix;
+        {
+            std::lock_guard<std::mutex> lock(_catMutex);
+            prefix = _catShufflePrefix;
+        }
+        if (!prefix.empty() && reportedPreset.rfind(prefix, 0) != 0)
+        {
+            JumpToCategory();
+        }
+    }
+
     _fps = fps;
     long nowSec = static_cast<long>(::time(nullptr));
     if (nowSec != _lastStatsSample) { _lastStatsSample = nowSec; SampleSystemStats(); }
@@ -671,6 +772,11 @@ void RemoteControl::PublishStatus(const ProjectMWrapper::PlaybackStatus& status,
     {
         std::lock_guard<std::mutex> lock(_favMutex);
         favorited = _favorites.count(reportedPreset) > 0;
+    }
+    std::string catShufflePrefix;
+    {
+        std::lock_guard<std::mutex> lock(_catMutex);
+        catShufflePrefix = _catShufflePrefix;
     }
 
     auto& app = ProjectMSDLApplication::instance();
@@ -686,6 +792,7 @@ void RemoteControl::PublishStatus(const ProjectMWrapper::PlaybackStatus& status,
          << "\"locked\":" << (status.locked ? "true" : "false") << ","
          << "\"favorited\":" << (favorited ? "true" : "false") << ","
          << "\"favoritesShuffle\":" << (_favShuffle.load() ? "true" : "false") << ","
+         << "\"categoryShuffle\":\"" << JsonEscape(catShufflePrefix) << "\","
          << "\"workshop\":" << (_workshopActive ? "true" : "false") << ","
          << "\"blocked\":" << wrapper.BlockedCount() << ","
          << "\"disliked\":" << wrapper.DislikedCount() << ","

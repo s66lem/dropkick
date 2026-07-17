@@ -65,6 +65,9 @@ body{background:var(--paper);color:var(--ink);font-family:"Space Grotesk",system
 .chead{display:flex;justify-content:space-between;align-items:center;margin:18px 2px 8px;cursor:pointer}
 .chead .c{font-size:11px;letter-spacing:.12em;text-transform:uppercase}
 .chead .ct{font-size:11px;color:var(--muted)}
+.chead .cr{display:flex;align-items:center;gap:12px}
+.chead .csh{width:17px;height:17px;fill:var(--muted);flex:none;padding:2px} /* padding widens the tap target a touch */
+.chead .csh.on{fill:var(--orange)}
 .row{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;
   background:var(--panel);margin-bottom:8px;cursor:pointer}
 .row:active{background:var(--key-active)}

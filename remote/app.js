@@ -12,6 +12,7 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => (
   { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const STAR = '<svg class="st" viewBox="0 0 24 24"><path d="M12 3l2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.8 6.1 21l1.2-6.5L2.5 9.9 9 9z"/></svg>';
+const SHUF = '<svg class="csh" viewBox="0 0 24 24"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>';
 
 /* ---------- theme ---------- */
 const themePref = localStorage.getItem("theme");
@@ -40,6 +41,7 @@ let prefix = "";           // common dir prefix
 let groups = new Map();    // category -> [preset]
 let favorites = new Set();
 let currentPath = "";
+let catShuffleActive = "";  // server's active category-shuffle prefix (incl. trailing /), "" = off
 
 const nameOf = (p) => p.split("/").pop().replace(/\.milk$/i, "");
 const relOf = (p) => p.startsWith(prefix) ? p.slice(prefix.length) : p;
@@ -79,6 +81,13 @@ async function toggleFavorite(path) {
   return r.favorited;
 }
 
+async function toggleCategoryShuffle(dir) {
+  const r = await (await POST("/api/category/shuffle?path=" + encodeURIComponent(dir))).json();
+  catShuffleActive = r.categoryShuffle ? dir + "/" : "";
+  renderBrowse();
+  setTimeout(refresh, 300);
+}
+
 /* ---------- rendering ---------- */
 function rowEl(x) {
   const row = document.createElement("div");
@@ -110,8 +119,17 @@ function renderBrowse() {
   for (const [cat, items] of groups) {
     const head = document.createElement("div");
     head.className = "chead";
-    head.innerHTML = `<span class="c">${openCats.has(cat) ? "▾ " : "▸ "}${esc(cat)}</span><span class="ct">${items.length}</span>`;
+    const dir = prefix + cat;                       // real folder this group came from
+    const canShuffle = cat !== "Presets";           // flat packs have no folder to scope to
+    const shufActive = catShuffleActive === dir + "/";
+    head.innerHTML = `<span class="c">${openCats.has(cat) ? "▾ " : "▸ "}${esc(cat)}</span>` +
+      `<span class="cr">${canShuffle ? SHUF : ""}<span class="ct">${items.length}</span></span>`;
     head.onclick = () => { openCats.has(cat) ? openCats.delete(cat) : openCats.add(cat); renderBrowse(); };
+    const shuf = head.querySelector(".csh");
+    if (shuf) {
+      shuf.classList.toggle("on", shufActive);
+      shuf.onclick = (e) => { e.stopPropagation(); toggleCategoryShuffle(dir); };
+    }
     host.appendChild(head);
     if (openCats.has(cat)) items.forEach(x => host.appendChild(rowEl(x)));
   }
@@ -145,6 +163,8 @@ async function refresh() {
     $("tLock").classList.toggle("on", !!s.locked);
     $("tFav").classList.toggle("on", !!s.favorited);
     $("favShuffle").classList.toggle("on", !!s.favoritesShuffle);
+    const cs = s.categoryShuffle || "";
+    if (cs !== catShuffleActive) { catShuffleActive = cs; renderBrowse(); }
     $("nowLabel").textContent = s.workshop ? "WORKSHOP · LIVE EDIT" : "NOW PLAYING";
     $("nowLabel").classList.toggle("editing", !!s.workshop);
     const blocked = s.blocked || 0;
