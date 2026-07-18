@@ -103,8 +103,34 @@ $props | Out-File -FilePath $PropsPath -Encoding ascii
 start "" /D "%~dp0" "%~dp0projectMSDL.exe" %*
 "@ | Out-File -FilePath (Join-Path $BinDir "dropkick.cmd") -Encoding ascii
 
+# The server listens on all interfaces, but Windows Defender Firewall blocks
+# unsolicited inbound connections by default (phones on the LAN can't reach the
+# remote until a rule exists or the first-listen prompt is accepted). Add an
+# inbound allow rule for the exe on private networks; needs admin, so just hint
+# if we can't.
+$Exe = Join-Path $BinDir "projectMSDL.exe"
+if (-not (Get-NetFirewallApplicationFilter -ErrorAction SilentlyContinue |
+          Where-Object Program -eq $Exe |
+          Get-NetFirewallRule -ErrorAction SilentlyContinue |
+          Where-Object { $_.Enabled -eq "True" -and $_.Action -eq "Allow" -and $_.Direction -eq "Inbound" })) {
+    try {
+        New-NetFirewallRule -DisplayName "Dropkick remote (projectMSDL)" -Direction Inbound `
+            -Program $Exe -Action Allow -Profile Private -ErrorAction Stop | Out-Null
+        Write-Host "Added a firewall rule so phones on your network can reach the remote."
+    } catch {
+        Write-Warning "Couldn't add a firewall rule (not admin?). If the remote isn't reachable from your phone, allow projectMSDL when Windows asks, or run:"
+        Write-Warning "  New-NetFirewallRule -DisplayName 'Dropkick remote (projectMSDL)' -Direction Inbound -Program '$Exe' -Action Allow -Profile Private"
+    }
+}
+
 $RemoteQuery = if ($Token) { "/?token=$Token" } else { "" }
+# Show the actual LAN address — phones can't resolve "localhost" or (usually) the
+# PC's hostname, so print something that can be typed straight into a phone.
+$LanIp = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+          Where-Object { $_.IPAddress -notlike "127.*" -and $_.IPAddress -notlike "169.254.*" } |
+          Select-Object -First 1).IPAddress
 Write-Host ""
-Write-Host "Done. Run:  $Prefix\bin\projectMSDL.exe"
-Write-Host "Remote:     http://localhost:8080$RemoteQuery  (or http://<this-pc-ip>:8080$RemoteQuery from a phone)"
+Write-Host "Done. Run:  $Prefix\bin\projectMSDL.exe   (or just: dropkick)"
+Write-Host "Remote:     http://localhost:8080$RemoteQuery"
+if ($LanIp) { Write-Host "Phone:      http://${LanIp}:8080$RemoteQuery" }
 Write-Host "Add presets under $Data\presets\cream-of-the-crop\"
