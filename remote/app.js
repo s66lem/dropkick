@@ -24,6 +24,19 @@ $("theme").onclick = () => {
   localStorage.setItem("theme", next);
 };
 
+/* ---------- auto-hiding stats bar ---------- */
+// Collapse the system monitor 5s after load; hovering the (thin) strip brings it
+// back, and it re-hides 5s after the cursor leaves. On touch, a tap peeks it.
+{
+  const stats = $("stats");
+  let statsTimer;
+  const armHide = () => { clearTimeout(statsTimer); statsTimer = setTimeout(() => stats.classList.add("hide"), 5000); };
+  stats.addEventListener("mouseenter", () => { clearTimeout(statsTimer); stats.classList.remove("hide"); });
+  stats.addEventListener("mouseleave", armHide);
+  stats.addEventListener("touchstart", () => { stats.classList.remove("hide"); armHide(); }, { passive: true });
+  armHide();
+}
+
 /* ---------- tabs ---------- */
 document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
   document.querySelectorAll(".tab").forEach(x => x.classList.remove("on"));
