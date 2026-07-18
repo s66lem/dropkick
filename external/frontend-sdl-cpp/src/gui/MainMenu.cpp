@@ -26,6 +26,27 @@ MainMenu::MainMenu(ProjectMGUI& gui)
 
 void MainMenu::Draw()
 {
+    // Auto-hide: the menu bar disappears after 5s without pointer activity near it
+    // and comes back while the cursor hovers the top edge of the window. Uses wall
+    // time, not ImGui::GetTime() — the ImGui clock freezes while the UI is hidden.
+    const double now = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    if (now - _lastDrawTime > 0.5)
+    {
+        _lastActivityTime = now; // the UI was just toggled on — start with the bar visible
+    }
+    _lastDrawTime = now;
+
+    const auto& io = ImGui::GetIO();
+    const bool nearTop = io.MousePos.y >= 0.0f && io.MousePos.y <= ImGui::GetFrameHeight() * 1.5f;
+    if (nearTop || ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel))
+    {
+        _lastActivityTime = now; // hovering the bar or a menu is open — keep it up
+    }
+    if (now - _lastActivityTime > 5.0)
+    {
+        return;
+    }
+
     if (ImGui::BeginMainMenuBar())
     {
         if (ImGui::BeginMenu("File"))
@@ -51,14 +72,11 @@ void MainMenu::Draw()
 
             if (ImGui::MenuItem("Play Next Preset", "n"))
             {
-                _notificationCenter.postNotification(new PlaybackControlNotification(PlaybackControlNotification::Action::LastPreset));
+                _notificationCenter.postNotification(new PlaybackControlNotification(PlaybackControlNotification::Action::NextPreset));
             }
             if (ImGui::MenuItem("Play Previous Preset", "p"))
             {
-                _notificationCenter.postNotification(new PlaybackControlNotification(PlaybackControlNotification::Action::PreviousPreset));
-            }
-            if (ImGui::MenuItem("Go Back One Preset", "Backspace"))
-            {
+                // History-based: the preset that actually played before (matters with shuffle).
                 _notificationCenter.postNotification(new PlaybackControlNotification(PlaybackControlNotification::Action::LastPreset));
             }
             if (ImGui::MenuItem("Random Preset", "r"))
