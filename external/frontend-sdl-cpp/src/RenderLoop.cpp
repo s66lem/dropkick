@@ -408,7 +408,9 @@ void RenderLoop::KeyEvent(const SDL_KeyboardEvent& event, bool down)
             break;
 
         case SDLK_p:
-            Poco::NotificationCenter::defaultCenter().postNotification(new PlaybackControlNotification(PlaybackControlNotification::Action::PreviousPreset, _keyStates._shiftPressed));
+            // History-based back (same as Backspace): the preset that actually played
+            // before, not the previous playlist position — matters with shuffle on.
+            Poco::NotificationCenter::defaultCenter().postNotification(new PlaybackControlNotification(PlaybackControlNotification::Action::LastPreset, _keyStates._shiftPressed));
             break;
 
         case SDLK_r: {
@@ -502,7 +504,7 @@ void RenderLoop::ScrollEvent(const SDL_MouseWheelEvent& event)
     // Wheel down is negative
     else if (event.y < 0)
     {
-        projectm_playlist_play_previous(_playlistHandle, true);
+        projectm_playlist_play_last(_playlistHandle, true); // history-based back
     }
 }
 

@@ -406,7 +406,10 @@ void RemoteControl::DrainCommands()
                 break;
             case CommandType::Previous:
                 _workshopActive = false;
-                center.postNotification(new PlaybackControlNotification(PlaybackControlNotification::Action::PreviousPreset));
+                // History-based: go to what actually played before (matters with shuffle),
+                // not the previous playlist position. Falls back to position-previous when
+                // the history is empty.
+                center.postNotification(new PlaybackControlNotification(PlaybackControlNotification::Action::LastPreset));
                 break;
             case CommandType::Random:
                 _workshopActive = false;
