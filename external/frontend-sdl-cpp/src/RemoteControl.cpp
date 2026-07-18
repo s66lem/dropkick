@@ -193,6 +193,25 @@ void RemoteControl::RegisterRoutes()
 
     _server->set_mount_point("/", _webRoot); // serves index.html, app.js, style.css
 
+    if (!_token.empty())
+    {
+        // Short-URL entry: http://<host>:<port>/<token> loads the app, which takes
+        // the token from the path (see app.js) — much easier to type on a phone
+        // than a ?token= query string.
+        _server->Get("/" + _token, [this](const httplib::Request&, httplib::Response& res) {
+            std::ifstream in(_webRoot + "/index.html", std::ios::binary);
+            if (!in)
+            {
+                res.status = 500;
+                res.set_content("index.html missing", "text/plain");
+                return;
+            }
+            std::stringstream buffer;
+            buffer << in.rdbuf();
+            res.set_content(buffer.str(), "text/html");
+        });
+    }
+
     getJson("/api/status", &RemoteControl::StatusJson);
     getJson("/api/packs", &RemoteControl::PacksJson);
     getJson("/api/presets", &RemoteControl::PresetsJson);

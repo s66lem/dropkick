@@ -72,8 +72,10 @@ if (Test-Path $PropsPath) {
     if ($existing) { $Token = $existing.Matches[0].Groups[1].Value }
 }
 if (-not $Token) {
-    $Token = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 24 | ForEach-Object { [char]$_ })
-    Write-Host "Generated a remote-control token: $Token"
+    # Short, typeable token: the remote is reachable at http://<ip>:8080/op1.
+    # Bump the number (op2, op3, ...) in projectMSDL.properties to rotate it.
+    $Token = "op1"
+    Write-Host "Remote-control token: $Token"
 }
 
 # Windowed by default on Windows: a borderless-fullscreen window opened at launch
@@ -123,7 +125,7 @@ if (-not (Get-NetFirewallApplicationFilter -ErrorAction SilentlyContinue |
     }
 }
 
-$RemoteQuery = if ($Token) { "/?token=$Token" } else { "" }
+$RemoteQuery = if ($Token) { "/$Token" } else { "" }
 # Show the actual LAN address — phones can't resolve "localhost" or (usually) the
 # PC's hostname, so print something that can be typed straight into a phone.
 $LanIp = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |

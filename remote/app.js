@@ -1,5 +1,9 @@
 /* Dropkick remote v2 */
-const token = new URLSearchParams(location.search).get("token") || "";
+// The token comes either from ?token=... or from the path (http://host:8080/op1),
+// the latter being much easier to type on a phone.
+const token = new URLSearchParams(location.search).get("token")
+  || decodeURIComponent(location.pathname.replace(/^\/+|\/+$/g, ""))
+  || "";
 // Send the token in a header, not the query string, so it doesn't leak into
 // server access logs, browser history, or Referer headers.
 const authHeaders = token ? { "X-Dropkick-Token": token } : {};
