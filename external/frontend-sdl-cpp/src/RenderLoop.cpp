@@ -1,9 +1,11 @@
 #include "RenderLoop.h"
 
 #include "FPSLimiter.h"
+#include "PresetLists.h"
 
 #include "gui/ProjectMGUI.h"
 
+#include <Poco/Delegate.h>
 #include <Poco/NotificationCenter.h>
 #include <Poco/Path.h>
 
@@ -25,6 +27,47 @@ RenderLoop::RenderLoop()
     , _remoteControl(Poco::Util::Application::instance().getSubsystem<RemoteControl>())
     , _userConfig(ProjectMSDLApplication::instance().UserConfiguration())
 {
+    RefreshRenderSettings();
+    _userConfig->propertyChanged += Poco::delegate(this, &RenderLoop::OnConfigurationPropertyChanged);
+    _userConfig->propertyRemoved += Poco::delegate(this, &RenderLoop::OnConfigurationPropertyRemoved);
+}
+
+RenderLoop::~RenderLoop()
+{
+    _userConfig->propertyRemoved -= Poco::delegate(this, &RenderLoop::OnConfigurationPropertyRemoved);
+    _userConfig->propertyChanged -= Poco::delegate(this, &RenderLoop::OnConfigurationPropertyChanged);
+}
+
+void RenderLoop::OnConfigurationPropertyChanged(const Poco::Util::AbstractConfiguration::KeyValue& property)
+{
+    OnConfigurationPropertyRemoved(property.key());
+}
+
+void RenderLoop::OnConfigurationPropertyRemoved(const std::string& key)
+{
+    if (key == "projectM" || key.rfind("projectM.", 0) == 0) { RefreshRenderSettings(); }
+}
+
+void RenderLoop::RefreshRenderSettings()
+{
+    const auto& config = ProjectMSDLApplication::instance().config();
+    VisualSettings visual;
+    visual.reduceFlashing = config.getBool("projectM.reduceFlashing", false);
+    visual.flashStrength = static_cast<float>(config.getDouble("projectM.flashStrength", 0.6));
+    visual.brightness = static_cast<float>(
+        PresetLists::ClampSettingValue("brightness", config.getDouble("projectM.brightness", 1.0)));
+    visual.tintEnabled = config.getBool("projectM.tintEnabled", false);
+    PostProcess::ParseHexColor(config.getString("projectM.tintColor", "#00ff00"), visual.tintR, visual.tintG, visual.tintB);
+    visual.tintStrength = static_cast<float>(config.getDouble("projectM.tintStrength", 1.0));
+    _visual = visual;
+    _post.SetReduceFlashing(_visual.reduceFlashing);
+    _post.SetStrength(_visual.flashStrength);
+    _post.SetBrightness(_visual.brightness);
+    _post.SetTint(_visual.tintEnabled, _visual.tintR, _visual.tintG, _visual.tintB, _visual.tintStrength);
+
+    _autoskip.enabled = config.getBool("projectM.autoskipEnabled", true);
+    _autoskip.fps = PresetLists::ClampSettingValue("autoskipFps", config.getDouble("projectM.autoskipFps", 20.0));
+    _autoskip.strikes = static_cast<uint32_t>(PresetLists::ClampSettingValue("autoskipStrikes", config.getInt("projectM.autoskipStrikes", 3)));
 }
 
 void RenderLoop::Run()
@@ -47,40 +90,25 @@ void RenderLoop::Run()
         CheckViewportSize();
         _audioCapture.FillBuffer();
 
-        // Watchdog: if rendering a preset takes absurdly long, the V3D GPU likely hung on it.
-        // Quarantine it and move on (best-effort — a hard hang kills us and the supervisor
-        // + startup quarantine handle that instead). 4s is well above a legit heavy first frame.
-        // NOTE: _userConfig is the RAW user configuration (not a projectM-rooted view despite the
-        // header comment), so keys MUST carry the "projectM." prefix — same as skipToDropped below
-        // and as RemoteControl::ApplySetting writes them. Without it these reads silently return the
-        // defaults and the effects never engage.
-        _post.SetReduceFlashing(_userConfig->getBool("projectM.reduceFlashing", false));
-        _post.SetStrength(static_cast<float>(_userConfig->getDouble("projectM.flashStrength", 0.6)));
-        _post.SetBrightness(static_cast<float>(_userConfig->getDouble("projectM.brightness", 1.0)));
-        _post.SetTint(_userConfig->getBool("projectM.tintEnabled", false),
-                      _userConfig->getString("projectM.tintColor", "#00ff00"),
-                      static_cast<float>(_userConfig->getDouble("projectM.tintStrength", 1.0)));
-
         Uint32 renderStart = SDL_GetTicks();
-        if (_post.Active())
+        _post.Begin(_renderWidth, _renderHeight);
+        _projectMWrapper.RenderFrame(_post.SceneFbo());
+        _post.Composite();
+        if (_remoteControl.WantsPreview() && _post.CapturePreview(_renderWidth, _renderHeight, _previewBmp))
         {
-            _post.Begin(_renderWidth, _renderHeight);
-            _projectMWrapper.RenderFrame(_post.SceneFbo()); // SceneFbo()==0 if setup failed -> backbuffer
-            _post.Composite();
+            _remoteControl.PublishPreviewFrame(std::move(_previewBmp));
         }
-        else
-        {
-            _projectMWrapper.RenderFrame();
-        }
-        auto status = _projectMWrapper.CurrentStatus();
-        if (status.position != _lastPlaylistPos)
+        const auto& status = _projectMWrapper.CurrentStatus();
+        const auto revision = _projectMWrapper.PlaylistRevision();
+        if (status.position != _lastPlaylistPos || revision != _lastPlaylistRevision)
         {
             _lastPlaylistPos = status.position;
+            _lastPlaylistRevision = revision;
             _presetStartTicks = SDL_GetTicks();
             _lowFpsStartTicks = 0; // fresh preset — reset the low-FPS window
         }
         _lastFps = limiter.FPS();
-        _remoteControl.PublishStatus(status, _audioCapture.AudioDeviceName(), _lastFps);
+        _remoteControl.PublishStatus(status, _lastFps);
         _projectMGui.Draw();
 
         _sdlRenderingWindow.Swap();
@@ -96,20 +124,18 @@ void RenderLoop::Run()
         // Paused while the post-process pass is active: that pass costs several fps, so judging global
         // FPS then would wrongly quarantine otherwise-fine presets onto the safety blocklist. True
         // freezes are still caught by the 4s hard-hang watchdog above regardless of effects.
-        if (_userConfig->getBool("projectM.autoskipEnabled", true) && !_post.Active())
+        if (_autoskip.enabled && !_post.Active())
         {
             uint32_t now = SDL_GetTicks();
             if (now - _presetStartTicks > 2000) // grace: ignore first-frame compile / soft-cut
             {
                 float fps = limiter.FPS();
-                double threshold = _userConfig->getDouble("projectM.autoskipFps", 20.0);
-                if (fps > 0.5f && fps < threshold)
+                if (fps > 0.5f && fps < _autoskip.fps)
                 {
                     if (_lowFpsStartTicks == 0) { _lowFpsStartTicks = now; }
                     else if (now - _lowFpsStartTicks > 1500) // sustained low FPS
                     {
-                        int strikes = _userConfig->getInt("projectM.autoskipStrikes", 3);
-                        _projectMWrapper.AutoSkipSlow(static_cast<uint32_t>(strikes < 0 ? 0 : strikes));
+                        _projectMWrapper.AutoSkipSlow(_autoskip.strikes);
                         _lowFpsStartTicks = 0;
                         _presetStartTicks = now; // grace the next preset
                     }
@@ -142,6 +168,11 @@ void RenderLoop::PollEvents()
 
         switch (event.type)
         {
+            case SDL_AUDIODEVICEADDED:
+            case SDL_AUDIODEVICEREMOVED:
+                if (event.adevice.iscapture) { _remoteControl.RefreshAudioDevices(_audioCapture); }
+                break;
+
             case SDL_MOUSEWHEEL:
 
                 if (!_projectMGui.WantsMouseInput())
@@ -218,6 +249,7 @@ void RenderLoop::PollEvents()
 
                         if (projectm_playlist_insert_preset(_playlistHandle, droppedFilePath, index, true))
                         {
+                            _projectMWrapper.MarkPlaylistChanged();
                             if (skipToDropped)
                             {
                                 projectm_playlist_play_next(_playlistHandle, true);
@@ -235,12 +267,14 @@ void RenderLoop::PollEvents()
                         if (droppedFolderOverride)
                         {
                             projectm_playlist_clear(_playlistHandle);
+                            _projectMWrapper.MarkPlaylistChanged();
                             index = 0;
                         }
 
                         uint32_t addedFilesCount = projectm_playlist_insert_path(_playlistHandle, droppedFilePath, index, true, true);
                         if (addedFilesCount > 0)
                         {
+                            _projectMWrapper.MarkPlaylistChanged();
                             std::string toastMessage = "Added " + std::to_string(addedFilesCount) + " presets from " + droppedFilePath;
                             poco_information_f1(_logger, "%s", toastMessage);
                             if (skipToDropped || droppedFolderOverride)
@@ -388,6 +422,7 @@ void RenderLoop::KeyEvent(const SDL_KeyboardEvent& event, bool down)
             if (modifierPressed)
             {
                 _audioCapture.NextAudioDevice();
+                _remoteControl.RefreshAudioDevices(_audioCapture);
             }
             break;
 

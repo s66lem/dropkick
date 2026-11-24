@@ -1,10 +1,18 @@
 #!/usr/bin/env bash
-# Dropkick bootstrap: install deps, init submodules, build with GLES, install assets.
-# Idempotent and re-runnable. Run from a clone of the dropkick superproject.
+# Dropkick bootstrap: install deps, build the vendored forks (external/) with GLES,
+# install assets. Idempotent and re-runnable. Run from a clone of this repo.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PREFIX="${DROPKICK_PREFIX:-$HOME/.local}"
 DATA="$HOME/.local/share/dropkick"
+# Prefix precedence: an explicit DROPKICK_PREFIX in the caller's environment, then
+# the installed dropkick.env (so reruns keep a previous choice), then ~/.local.
+CALLER_PREFIX="${DROPKICK_PREFIX:-}"
+PREFIX="$CALLER_PREFIX"
+if [ -z "$PREFIX" ] && [ -f "$DATA/dropkick.env" ]; then
+  PREFIX="$(. "$DATA/dropkick.env" >/dev/null 2>&1; echo "${DROPKICK_PREFIX:-}")"
+fi
+PREFIX="${PREFIX:-$HOME/.local}"
+export DROPKICK_PREFIX="$PREFIX"
 
 echo "== Installing build dependencies =="
 sudo apt-get update
@@ -13,6 +21,19 @@ sudo apt-get install -y \
   libsdl2-dev libgles2-mesa-dev libegl1-mesa-dev \
   libpoco-dev libglm-dev \
   libpipewire-0.3-dev
+
+# Fail before the long libprojectM build: projectM requires CMake >= 3.27.
+cmake_ver="$(cmake --version | sed -n '1s/[^0-9]*\([0-9][0-9.]*\).*/\1/p')"
+if [ "$(printf '%s\n3.27\n' "$cmake_ver" | sort -V | head -n1)" != "3.27" ]; then
+  cat >&2 <<EOF
+ERROR: CMake $cmake_ver found, but >= 3.27 is required.
+Raspberry Pi OS Bookworm's apt ships CMake 3.25. Install a newer one, then rerun:
+  - Kitware apt repository: https://apt.kitware.com/
+  - or: sudo apt-get install -t bookworm-backports cmake
+  - or: pipx install cmake   (put ~/.local/bin ahead of /usr/bin in PATH)
+EOF
+  exit 1
+fi
 
 echo "== Building libprojectM (GLES) =="
 cmake -S "$ROOT/external/projectm" -B "$ROOT/external/projectm/build" \
@@ -46,6 +67,15 @@ if [ ! -f "$DATA/dropkick.env" ]; then
   token="op1"
   sed -i "s#^DROPKICK_REMOTE_TOKEN=.*#DROPKICK_REMOTE_TOKEN=\"$token\"#" "$DATA/dropkick.env"
   echo "Remote-control token: $token (see DROPKICK_REMOTE_TOKEN in $DATA/dropkick.env)."
+fi
+# Persist an explicit prefix so sync-config.sh and the installed launcher use it too.
+if [ -n "$CALLER_PREFIX" ]; then
+  esc="$(printf '%s' "$CALLER_PREFIX" | sed 's/[#&\\]/\\&/g')"
+  if grep -q '^DROPKICK_PREFIX=' "$DATA/dropkick.env"; then
+    sed -i "s#^DROPKICK_PREFIX=.*#DROPKICK_PREFIX=\"$esc\"#" "$DATA/dropkick.env"
+  else
+    printf 'DROPKICK_PREFIX="%s"\n' "$CALLER_PREFIX" >> "$DATA/dropkick.env"
+  fi
 fi
 # Render projectMSDL.properties from dropkick.env (the config source of truth).
 "$ROOT/scripts/sync-config.sh"

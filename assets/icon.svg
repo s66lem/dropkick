@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1e2028"/>
+      <stop offset="100%" stop-color="#101116"/>
+    </linearGradient>
+    <linearGradient id="d-grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ff4916"/>
+      <stop offset="55%" stop-color="#ff6a28"/>
+      <stop offset="100%" stop-color="#ffa148"/>
+    </linearGradient>
+  </defs>
+  <rect x="1.5" y="1.5" width="61" height="61" rx="14" fill="url(#bg)" stroke="#2e323d" stroke-width="2"/>
+  <!-- Bold geometric D with an audio-pulse entry notch on the left spine -->
+  <path d="M18.5 24.5 V15.5 H31 C42 15.5 48.5 22.3 48.5 32 C48.5 41.7 42 48.5 31 48.5 H18.5 V39.5"
+        fill="none" stroke="url(#d-grad)" stroke-width="6.8"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Crisp white audio kick-pulse shooting cleanly through the D's notch -->
+  <path d="M13 32 H22.5 L26.2 23.5 L31 40.5 L35.2 28 L37.8 32 H41.5"
+        fill="none" stroke="#f5f6f8" stroke-width="3.2"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

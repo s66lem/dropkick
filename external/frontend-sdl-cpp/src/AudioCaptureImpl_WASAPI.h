@@ -8,6 +8,7 @@
 #include <Poco/Event.h>
 
 #include <mmdeviceapi.h>
+#include <atomic>
 #include <string>
 
 struct projectm;
@@ -281,7 +282,7 @@ protected:
     Poco::Logger& _logger{Poco::Logger::get("AudioCapture.WASAPI")}; //!< The class logger.
 
     projectm* _projectMHandle{nullptr}; //!< Handle if the projectM instance that will receive the audio data.
-    int _currentAudioDeviceIndex{-1}; //!< Currently selected audio device index.
+    std::atomic<int> _currentAudioDeviceIndex{-1}; //!< Shared with WASAPI endpoint callbacks.
     IAudioClient* _audioClient{nullptr}; //!< Currently used audio client.
     IAudioCaptureClient* _audioCaptureClient{nullptr}; //!< Currently used capture client.
 

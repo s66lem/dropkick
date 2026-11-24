@@ -1,6 +1,7 @@
 #include "ProjectMWrapper.h"
 
 #include "ProjectMSDLApplication.h"
+#include "PresetLists.h"
 #include "SDLRenderingWindow.h"
 
 #include "notifications/DisplayToastNotification.h"
@@ -18,23 +19,14 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <vector>
 
 namespace
 {
-/** Reads a newline-separated list file into a set (used for the blocklist and dislikes). */
-void LoadLineSet(const std::string& filePath, std::set<std::string>& out)
-{
-    out.clear();
-    std::ifstream in(filePath);
-    std::string line;
-    while (std::getline(in, line))
-    {
-        if (!line.empty() && line.back() == '\r') { line.pop_back(); }
-        if (!line.empty()) { out.insert(line); }
-    }
+constexpr uint64_t defaultMeshX = 220;
+constexpr uint64_t defaultMeshY = 125;
 }
-} // namespace
 
 const char* ProjectMWrapper::name() const
 {
@@ -46,6 +38,7 @@ void ProjectMWrapper::initialize(Poco::Util::Application& app)
     auto& projectMSDLApp = dynamic_cast<ProjectMSDLApplication&>(app);
     _projectMConfigView = projectMSDLApp.config().createView("projectM");
     _userConfig = projectMSDLApp.UserConfiguration();
+    _targetFps = _projectMConfigView->getInt("fps", 60);
     poco_information_f1(_logger, "Events enabled: %?d", _projectMConfigView->eventsEnabled());
 
     // Poco::Path::expand() does not resolve "~" on Windows; home() works everywhere.
@@ -80,7 +73,7 @@ void ProjectMWrapper::initialize(Poco::Util::Application& app)
             throw std::runtime_error("projectM initialization failed");
         }
 
-        int fps = _projectMConfigView->getInt("fps", 60);
+        int fps = _targetFps;
         if (fps <= 0)
         {
             // We don't know the target framerate, pass in a default of 60.
@@ -89,7 +82,8 @@ void ProjectMWrapper::initialize(Poco::Util::Application& app)
 
         projectm_set_window_size(_projectM, canvasWidth, canvasHeight);
         projectm_set_fps(_projectM, fps);
-        projectm_set_mesh_size(_projectM, _projectMConfigView->getInt("meshX", 48), _projectMConfigView->getInt("meshY", 32));
+        projectm_set_mesh_size(_projectM, _projectMConfigView->getUInt64("meshX", defaultMeshX),
+                               _projectMConfigView->getUInt64("meshY", defaultMeshY));
         projectm_set_aspect_correction(_projectM, _projectMConfigView->getBool("aspectCorrectionEnabled", true));
         projectm_set_preset_locked(_projectM, _projectMConfigView->getBool("presetLocked", false));
 
@@ -182,9 +176,9 @@ projectm_playlist_handle ProjectMWrapper::Playlist() const
     return _playlist;
 }
 
-int ProjectMWrapper::TargetFPS()
+int ProjectMWrapper::TargetFPS() const
 {
-    return _projectMConfigView->getInt("fps", 60);
+    return _targetFps;
 }
 
 void ProjectMWrapper::UpdateRealFPS(float fps)
@@ -196,15 +190,6 @@ void ProjectMWrapper::RenderFrame(uint32_t targetFbo) const
 {
     glClearColor(0.0, 0.0, 0.0, 0.0);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-    size_t currentMeshX{0};
-    size_t currentMeshY{0};
-    projectm_get_mesh_size(_projectM, &currentMeshX, &currentMeshY);
-    if (currentMeshX != _projectMConfigView->getInt("meshX", 220) ||
-        currentMeshY != _projectMConfigView->getInt("meshY", 125))
-    {
-        projectm_set_mesh_size(_projectM, _projectMConfigView->getInt("meshX", 220), _projectMConfigView->getInt("meshY", 125));
-    }
 
     if (targetFbo != 0)
     {
@@ -261,12 +246,14 @@ void ProjectMWrapper::PresetFileNameToClipboard() const
 
 bool ProjectMWrapper::LoadPresetPack(const std::string& packPath)
 {
-    if (!_playlist)
+    std::error_code ec;
+    if (!_playlist || !std::filesystem::is_directory(packPath, ec))
     {
         return false;
     }
 
     projectm_playlist_clear(_playlist);
+    MarkPlaylistChanged();
     uint32_t added = projectm_playlist_add_path(_playlist, packPath.c_str(),
                                                 true /*recurse*/, false /*allow_duplicates*/);
     if (added > 0)
@@ -277,31 +264,35 @@ bool ProjectMWrapper::LoadPresetPack(const std::string& packPath)
     ApplyRemovalLists(); // keep blocked/disliked presets out after a pack switch
 
     poco_information_f2(_logger, "Loaded preset pack '%s' (%?u presets).", packPath, added);
-    return added > 0;
+    return projectm_playlist_size(_playlist) > 0;
 }
 
-ProjectMWrapper::PlaybackStatus ProjectMWrapper::CurrentStatus() const
+const ProjectMWrapper::PlaybackStatus& ProjectMWrapper::CurrentStatus()
 {
-    PlaybackStatus status;
+    auto& status = _playbackStatus;
     if (!_playlist || !_projectM)
     {
+        status = {};
         return status;
     }
 
-    status.playlistSize = projectm_playlist_size(_playlist);
-    status.position = projectm_playlist_get_position(_playlist);
-    status.shuffle = projectm_playlist_get_shuffle(_playlist);
-    status.locked = projectm_get_preset_locked(_projectM);
-
-    if (status.playlistSize > 0 && status.position < status.playlistSize)
+    const auto size = projectm_playlist_size(_playlist);
+    const auto position = projectm_playlist_get_position(_playlist);
+    if (size != status.playlistSize || position != status.position || _playlistRevision != _statusRevision)
     {
-        char* item = projectm_playlist_item(_playlist, status.position);
-        if (item)
+        status.presetName.clear();
+        if (position < size)
         {
-            status.presetName = item;
+            char* item = projectm_playlist_item(_playlist, position);
+            if (item) { status.presetName.assign(item); }
             projectm_playlist_free_string(item);
         }
+        status.playlistSize = size;
+        status.position = position;
+        _statusRevision = _playlistRevision;
     }
+    status.shuffle = projectm_playlist_get_shuffle(_playlist);
+    status.locked = projectm_get_preset_locked(_projectM);
     return status;
 }
 
@@ -322,6 +313,7 @@ std::vector<std::string> ProjectMWrapper::PlaylistItems() const
     char** array = projectm_playlist_items(_playlist, 0, size);
     if (array)
     {
+        items.reserve(size);
         for (uint32_t i = 0; array[i] != nullptr; ++i)
         {
             items.emplace_back(array[i]);
@@ -335,21 +327,37 @@ void ProjectMWrapper::LoadPresetFile(const std::string& path) const
 {
     if (_projectM)
     {
+#ifdef _WIN32
+        // projectM's file API opens narrow paths using the Windows ANSI code page.
+        if (std::any_of(path.begin(), path.end(), [](unsigned char c) { return c >= 0x80; }))
+        {
+            std::ifstream in(PresetLists::PathFromUtf8(path), std::ios::binary);
+            if (!in)
+            {
+                poco_error_f1(_logger, "Could not open workshop preset %s.", path);
+                return;
+            }
+            const std::string data{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+            projectm_load_preset_data(_projectM, data.c_str(), true);
+            return;
+        }
+#endif
         projectm_load_preset_file(_projectM, path.c_str(), true);
     }
 }
 
 void ProjectMWrapper::LoadBlocklist()
 {
-    LoadLineSet(_blocklistPath, _blocklist);
+    _blocklist = PresetLists::LoadLineSet(_blocklistPath);
 }
 
 void ProjectMWrapper::AddToBlocklist(const std::string& path)
 {
-    if (path.empty() || _blocklist.count(path)) { return; }
-    _blocklist.insert(path);
-    std::ofstream out(_blocklistPath, std::ios::app);
-    if (out) { out << path << "\n"; }
+    if (path.empty() || !_blocklist.insert(path).second) { return; }
+    if (!PresetLists::AppendLine(_blocklistPath, path))
+    {
+        poco_warning_f1(_logger, "Could not write blocklist file %s.", _blocklistPath);
+    }
     poco_information_f1(_logger, "Quarantined preset (GPU-hang blocklist): %s", path);
 }
 
@@ -373,6 +381,7 @@ void ProjectMWrapper::ApplyRemovalLists()
     }
     if (removed)
     {
+        MarkPlaylistChanged();
         poco_information_f2(_logger, "Removal lists: dropped %?u presets (%?u blocked, disliked lists applied).",
                             removed, static_cast<uint32_t>(_blocklist.size()));
     }
@@ -407,22 +416,55 @@ void ProjectMWrapper::QuarantineFromCrash()
     std::remove(_breadcrumbPath.c_str());
 }
 
-std::string ProjectMWrapper::CurrentPresetPath() const
+void ProjectMWrapper::RemoveCurrentPreset(uint32_t position, const std::string& path)
 {
-    if (!_playlist) { return {}; }
-    char* item = projectm_playlist_item(_playlist, projectm_playlist_get_position(_playlist));
-    std::string path = item ? item : "";
-    if (item) { projectm_playlist_free_string(item); }
-    return path;
+    const auto size = projectm_playlist_size(_playlist);
+    const bool shuffle = projectm_playlist_get_shuffle(_playlist);
+    bool advanced = false;
+    if (size > 1 && position == size - 1)
+    {
+        // Advance before removing the last item so the playlist doesn't record an out-of-range cursor.
+        const auto next = shuffle ? std::uniform_int_distribution<uint32_t>(0, position - 1)(_playlistRng) : 0;
+        projectm_playlist_set_position(_playlist, next, true);
+        const auto newSize = projectm_playlist_size(_playlist);
+        if (newSize == 0) { MarkPlaylistChanged(); return; }
+        position = newSize - 1;
+        // Failed loads can remove items and shift the old last index.
+        char* item = projectm_playlist_item(_playlist, position);
+        const bool matches = item && path == item;
+        projectm_playlist_free_string(item);
+        if (!matches) { MarkPlaylistChanged(); return; }
+        advanced = projectm_playlist_get_position(_playlist) != position;
+    }
+    if (!projectm_playlist_remove_preset(_playlist, position)) { return; }
+    MarkPlaylistChanged();
+    if (advanced) { return; }
+
+    const auto remaining = projectm_playlist_size(_playlist);
+    if (remaining == 0)
+    {
+        ClearBreadcrumb();
+        projectm_load_preset_file(_projectM, "idle://Geiss & Sperl - Feedback (projectM idle HDR mix).milk", false);
+    }
+    else if (shuffle)
+    {
+        projectm_playlist_play_next(_playlist, true);
+    }
+    else
+    {
+        // Removal leaves the cursor unchanged. The following item shifted into this position.
+        projectm_playlist_set_position(_playlist, position < remaining ? position : 0, true);
+    }
 }
 
 void ProjectMWrapper::QuarantineCurrent()
 {
-    if (!_playlist) { return; }
-    AddToBlocklist(CurrentPresetPath());
+    const auto& status = CurrentStatus();
+    const auto path = status.presetName;
+    if (path.empty()) { return; }
+    AddToBlocklist(path);
     ClearBreadcrumb();
-    projectm_playlist_play_next(_playlist, true); // move off the bad preset first
-    ApplyRemovalLists();                          // then drop it (and any others) from the playlist
+    RemoveCurrentPreset(status.position, path);
 }
 
 uint32_t ProjectMWrapper::BlockedCount() const
@@ -439,27 +481,26 @@ void ProjectMWrapper::ClearBlocklist()
 
 void ProjectMWrapper::LoadDislikes()
 {
-    LoadLineSet(_dislikePath, _dislikes);
+    _dislikes = PresetLists::LoadLineSet(_dislikePath);
 }
 
 void ProjectMWrapper::AddToDislikes(const std::string& path)
 {
-    if (path.empty() || _dislikes.count(path)) { return; }
-    _dislikes.insert(path);
-    std::ofstream out(_dislikePath, std::ios::app);
-    if (out) { out << path << "\n"; }
+    if (path.empty() || !_dislikes.insert(path).second) { return; }
+    if (!PresetLists::AppendLine(_dislikePath, path))
+    {
+        poco_warning_f1(_logger, "Could not write dislikes file %s.", _dislikePath);
+    }
     poco_information_f1(_logger, "Disliked preset: %s", path);
 }
 
 void ProjectMWrapper::DislikeCurrent()
 {
-    if (!_playlist) { return; }
-    std::string path = CurrentPresetPath();
+    const auto& status = CurrentStatus();
+    const auto path = status.presetName;
     if (path.empty()) { return; }
-
     AddToDislikes(path);
-    projectm_playlist_play_next(_playlist, true); // move off it first
-    ApplyRemovalLists();                          // then drop it (and any others)
+    RemoveCurrentPreset(status.position, path);
 }
 
 uint32_t ProjectMWrapper::DislikedCount() const
@@ -476,41 +517,32 @@ void ProjectMWrapper::ClearDislikes()
 
 void ProjectMWrapper::LoadSlowCounts()
 {
-    _slowCounts.clear();
-    std::ifstream in(_slowCountsPath);
-    std::string line;
-    while (std::getline(in, line))
-    {
-        if (!line.empty() && line.back() == '\r') { line.pop_back(); }
-        auto tab = line.find('\t');
-        if (tab == std::string::npos) { continue; }
-        uint32_t count = static_cast<uint32_t>(std::strtoul(line.substr(0, tab).c_str(), nullptr, 10));
-        std::string path = line.substr(tab + 1);
-        if (!path.empty() && count > 0) { _slowCounts[path] = count; }
-    }
+    _slowCounts = PresetLists::LoadSlowCounts(_slowCountsPath);
 }
 
 void ProjectMWrapper::SaveSlowCounts()
 {
-    std::ofstream out(_slowCountsPath, std::ios::trunc);
-    if (!out) { return; }
-    for (const auto& kv : _slowCounts) { out << kv.second << '\t' << kv.first << "\n"; }
+    if (!PresetLists::SaveSlowCountsAtomic(_slowCountsPath, _slowCounts))
+    {
+        poco_warning_f1(_logger, "Could not write slow-counts file %s.", _slowCountsPath);
+    }
 }
 
 void ProjectMWrapper::AutoSkipSlow(uint32_t strikesThreshold)
 {
-    if (!_playlist) { return; }
-    std::string path = CurrentPresetPath();
+    const auto& status = CurrentStatus();
+    const auto path = status.presetName;
     if (path.empty()) { return; }
 
-    uint32_t strikes = ++_slowCounts[path];
+    auto& count = _slowCounts[path];
+    if (count < UINT32_MAX) { ++count; }
+    const auto strikes = count;
     if (strikesThreshold > 0 && strikes >= strikesThreshold)
     {
         _slowCounts.erase(path);
         SaveSlowCounts();
         AddToBlocklist(path);
-        projectm_playlist_play_next(_playlist, true);
-        ApplyRemovalLists();
+        RemoveCurrentPreset(status.position, path);
         poco_information_f2(_logger, "Auto-skip: preset too slow %?u times — blocklisted: %s",
                             strikes, path);
     }
@@ -653,8 +685,19 @@ void ProjectMWrapper::OnConfigurationPropertyRemoved(const std::string& key)
         projectm_set_hard_cut_sensitivity(_projectM, static_cast<float>(_projectMConfigView->getDouble("hardCutSensitivity", 1.0)));
     }
 
+    if (key == "projectM.beatSensitivity")
+    {
+        projectm_set_beat_sensitivity(_projectM, static_cast<float>(_projectMConfigView->getDouble("beatSensitivity", 1.0)));
+    }
+
+    if (key == "projectM.fps")
+    {
+        _targetFps = _projectMConfigView->getInt("fps", 60);
+    }
+
     if (key == "projectM.meshX" || key == "projectM.meshY")
     {
-        projectm_set_mesh_size(_projectM, _projectMConfigView->getUInt64("meshX", 48), _projectMConfigView->getUInt64("meshY", 32));
+        projectm_set_mesh_size(_projectM, _projectMConfigView->getUInt64("meshX", defaultMeshX),
+                               _projectMConfigView->getUInt64("meshY", defaultMeshY));
     }
 }

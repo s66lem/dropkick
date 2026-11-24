@@ -5,16 +5,29 @@ that drive motion, color, and waveforms, reacting to the audio in real time.
 
 ## The workshop loop
 
-1. Presets you're editing live in `~/.local/share/dropkick/workshop/`.
-2. Edit any `.milk` there in your editor of choice (VS Code, nano, …). When you
-   **save**, Dropkick live-reloads it on the TV within about a second.
-3. To start from something on screen: on the remote's **Now Playing** view, tap
-   **"Edit this preset in Workshop."** It copies the current preset into
-   `workshop/` and loads the copy — now your edits to that file hot-reload.
+There are two ways to iterate; both land in
+`~/.local/share/dropkick/workshop/` (`%USERPROFILE%\.local\share\dropkick\workshop\`
+on Windows).
 
-When a workshop preset is live, the remote shows **WORKSHOP · LIVE EDIT**. Hit
-Next/Random or pick from Browse to leave the workshop preset and return to the
-library.
+**In the remote's editor**
+1. Open the editor with **Edit in Workshop** on **Now Playing** (current preset) or
+   **Edit current** on **Browse**.
+2. Edit the preset text. Press **Ctrl+Enter** (or **Apply**) to write it to
+   `workshop/_scratch.milk` and send that to the display. It is a scratch file,
+   overwritten on every Apply.
+3. When you like it, press **Save** and name it in the inline dialog. It is
+   written to `workshop/` as a normal workshop preset. If a file with that name
+   already exists, you are asked to confirm before it is overwritten.
+
+**In your own editor**
+1. Edit any `.milk` in `workshop/` (VS Code, nano, …). When you **save**, Dropkick
+   live-reloads it on the TV within about a second.
+2. To start from something on screen, open it with **Edit in Workshop** (Now Playing)
+   or **Edit current** (Browse) and **Save** it into `workshop/` (or call
+   `POST /api/workshop/capture`), then edit that file on disk.
+
+When a workshop preset is live, the remote shows **Workshop · Live**. Hit
+Next/Random or pick from Browse to leave it and return to the library.
 
 > Reaching the files from your laptop: share `~/.local/share/dropkick/workshop/`
 > over your network (Samba/SFTP), or `git`/`scp` files onto the Pi. Then point
@@ -55,7 +68,8 @@ Custom variables: `q1`–`q32` carry values from `per_frame` into `per_pixel`/sh
 
 ## Shaders and the Pi
 Presets can carry `warp`/`composite` HLSL shaders. On the Pi these cross-compile
-to **GLSL ES 3.10**, so very advanced shaders may render differently or fail.
+to **GLSL ES 3.10**, so very advanced shaders may render differently or fail
+(desktop OpenGL builds are more forgiving).
 Equation-driven presets (like `starter.milk`, `fShader=0`) are the portable,
 reliable path. If a fancy preset looks wrong on the Pi, that's usually why.
 

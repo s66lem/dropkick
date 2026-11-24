@@ -13,6 +13,7 @@
 #include <Poco/Notification.h>
 
 #include <cstdint>
+#include <vector>
 
 class ProjectMGUI;
 
@@ -20,6 +21,7 @@ class RenderLoop
 {
 public:
     RenderLoop();
+    ~RenderLoop();
 
     void Run();
 
@@ -98,13 +100,38 @@ protected:
     float _lastFps{0.0f}; //!< FPS of the last rendered frame (for the F5 stats toast).
 
     uint32_t _lastPlaylistPos{0xFFFFFFFFu}; //!< Last seen playlist position (preset-change detection).
+    uint64_t _lastPlaylistRevision{0};
     uint32_t _presetStartTicks{0};          //!< SDL ticks when the current preset started (grace window).
     uint32_t _lowFpsStartTicks{0};          //!< SDL ticks when FPS first dropped below threshold (0 = not low).
 
     ModifierKeyStates _keyStates; //!< Current "pressed" states of modifier keys
 
-    Poco::AutoPtr<Poco::Util::AbstractConfiguration> _userConfig; //!< View of the "projectM" configuration subkey in the "user" configuration.
+    void RefreshRenderSettings();
+    void OnConfigurationPropertyChanged(const Poco::Util::AbstractConfiguration::KeyValue& property);
+    void OnConfigurationPropertyRemoved(const std::string& key);
 
+    struct VisualSettings
+    {
+        bool reduceFlashing{false};
+        float flashStrength{0.6f};
+        float brightness{1.0f};
+        bool tintEnabled{false};
+        float tintR{0.0f};
+        float tintG{1.0f};
+        float tintB{0.0f};
+        float tintStrength{1.0f};
+    } _visual;
+
+    struct AutoskipSettings
+    {
+        bool enabled{true};
+        double fps{20.0};
+        uint32_t strikes{3};
+    } _autoskip;
+
+    Poco::AutoPtr<Poco::Util::AbstractConfiguration> _userConfig;
+
+    std::vector<uint8_t> _previewBmp;
     PostProcess _post; //!< Fullscreen post-process (persistence/brightness/tint); inert unless an effect is on.
 
     Poco::Logger& _logger{Poco::Logger::get("RenderLoop")}; //!< The class logger.
