@@ -6,12 +6,16 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DATA="$HOME/.local/share/dropkick"
 
 # Load config values: repo defaults (baseline so every var is defined), then the
-# installed env, then an optional local override.
+# installed env, then an optional local override. An explicit DROPKICK_PREFIX in
+# the caller's environment wins over all of them (the repo default would otherwise
+# clobber it).
+CALLER_PREFIX="${DROPKICK_PREFIX:-}"
 set -a
 . "$ROOT/config/dropkick.env"
 [ -f "$DATA/dropkick.env" ] && . "$DATA/dropkick.env"
 [ -f "$DATA/dropkick.local.env" ] && . "$DATA/dropkick.local.env"
 set +a
+[ -n "$CALLER_PREFIX" ] && DROPKICK_PREFIX="$CALLER_PREFIX"
 
 PREFIX="${DROPKICK_PREFIX:-$HOME/.local}"
 # The frontend loads <prefix>/projectMSDL.properties (Poco's DEFAULT_CONFIG_PATH),

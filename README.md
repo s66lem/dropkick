@@ -1,79 +1,167 @@
-# Dropkick
+<h1><img src="assets/icon.svg" width="52" alt="Dropkick"> Dropkick</h1>
 
-A reproducible [projectM](https://github.com/projectM-visualizer/projectm) audio
-visualizer for the **Raspberry Pi 5**, with GLES 3.1 support, organized preset
-packs, and full phone/tablet remote control — including an in-browser preset
-editor. Built to run on a TV over HDMI and be driven from the couch.
+A [projectM](https://github.com/projectM-visualizer/projectm) audio visualizer
+that runs on the **Raspberry Pi 5** (GLES 3.1) and on **Windows** (desktop
+OpenGL 3.3), built to drive a TV over HDMI. A zero-dependency web app on your
+LAN controls it from a phone, including a live Milkdrop preset editor.
 
+## Engineering highlights
 
-## Install
+- **GLES 3.1 on Pi 5 (VideoCore VII).** Upstream projectM needs GLES 3.2. The
+  frontend probes at runtime (3.2 → 3.1 → 3.0) and libprojectM accepts a 3.1 /
+  GLSL ES 3.10 floor, so there is no hardcoded downgrade.
+- **Single-pass post-processing.** Reduce-flashing persistence, brightness, and
+  monochrome tint run as one MRT pass with FBO ping-pong, then `glBlitFramebuffer`
+  to the backbuffer: no readback stall. Works on GLES 3.0+ and desktop GL 3.3 Core.
+- **Quiet render loop.** Visual and auto-skip config are cached through
+  property-change observers (no per-frame string lookups or hex parsing). The
+  render thread publishes compact snapshots; JSON is serialized lazily on the
+  HTTP thread.
+- **Background telemetry.** CPU, memory, temperature, and workshop-folder polling
+  run on a 1 Hz monitor thread (Linux `/proc` + `/sys`, Windows
+  `GetSystemTimes` + `GlobalMemoryStatusEx`).
+- **GPU-hang resilience.** A 4 s frame watchdog (checked when a frame returns), a
+  breadcrumb that quarantines the preset that was active at the last crash or
+  hang, persistent low-FPS strikes, and an optional hardware watchdog for
+  full-board lockups.
+- **Offline-first remote.** A dependency-free responsive web app (no CDN assets),
+  an `ETag`/`304` preset catalog, constant-time token checks, atomic writes for
+  favorites, slow-counts, and workshop files, and an inline preset editor with
+  live apply.
 
-On a Raspberry Pi 5 (Raspberry Pi OS, aarch64):
+## Architecture
+
+```mermaid
+flowchart LR
+  Phone["Phone / tablet<br/>remote web app"] -->|HTTP REST| HTTP
+  subgraph projectMSDL
+    HTTP["HTTP server thread"] -->|command queue| Render
+    Render["Render / GL thread"] -->|state snapshots| HTTP
+    Audio["Audio capture thread"] -->|PCM| Render
+    Mon["1 Hz monitor thread<br/>telemetry, workshop"] -->|snapshots| HTTP
+    Render --> PM["libprojectM"]
+    Render --> PP["PostProcess<br/>MRT + FBO ping-pong"]
+  end
+  PP --> TV["Display"]
+  Disk[("presets, workshop,<br/>blocklist, favorites")] <--> Render
+```
+
+Threading, the context fallback ladder, the post-process pipeline, the watchdog
+layers, and the full HTTP API are in [docs/architecture.md](docs/architecture.md).
+
+## Quick start
+
+**Raspberry Pi 5** (Raspberry Pi OS, aarch64):
 
 ```bash
 git clone https://github.com/s66lem/dropkick.git
 cd dropkick && ./scripts/bootstrap.sh
-```
-
-`bootstrap.sh` installs dependencies, builds the bundled libprojectM + frontend
-with `-DENABLE_GLES=TRUE`, installs the `dropkick` launcher and a **Sound & Video**
-menu entry, and creates the preset/texture/workshop directories.
-
-To Launch:
-
-```bash
 dropkick
 ```
 
-### Other platforms
-Dropkick also builds on **Windows** (desktop OpenGL, from source) — see
-[docs/setup-windows.md](docs/setup-windows.md). macOS and non-Debian Linux aren't
-packaged yet but the code is portable (POSIX + `std::filesystem`); contributions
-welcome.
+Bootstrap installs dependencies, builds the vendored libprojectM and frontend
+with `-DENABLE_GLES=TRUE`, installs the `dropkick` launcher and a **Sound & Video**
+menu entry, and creates the preset, texture, and workshop folders. Then open
+`http://<pi-ip>:8080/op1` on a phone. Details: [docs/setup.md](docs/setup.md).
 
-## Features
+**Windows** (desktop OpenGL, built from source):
 
-- **Runs on the Pi 5's GPU.** Runtime GLES capability detection: the frontend
-  requests the best OpenGL ES context that works (3.2 → 3.1 → 3.0) and libprojectM
-  accepts a 3.1 / GLSL ES 3.10 floor — no hardcoded downgrades.
-- **Phone / tablet remote** at `http://<pi>:8080` — a four-view web app:
-  - **Now Playing** — transport, shuffle/lock/favorite, tap the name for its path.
-  - **Browse** — search and jump across your whole preset library, grouped by category.
-  - **Favorites** — star presets; "shuffle favorites" plays only your stars.
-  - **Settings** — preset duration, transitions, beat sensitivity, hard cut, FPS,
-    aspect correction, pack switching, audio input, and **Reduce flashing**.
-  - Dark mode, and a responsive layout that scales up on tablets and desktops.
-- **Make your own visualizations.** An in-browser editor (and a hot-reload
-  `workshop/` folder) let you edit Milkdrop preset code and see it live on the TV.
-  See [docs/authoring.md](docs/authoring.md).
-- **Preset packs.** Organized under `~/.local/share/dropkick/presets/<pack>/`,
-  switchable from the remote. See [docs/presets.md](docs/presets.md).
-- **Reduce flashing.** An optional render filter that limits how fast the picture
-  can brighten between frames, easing strobe-heavy presets.
-- **Survives bad presets.** Some shader-heavy presets can hang the Pi's GPU;
-  Dropkick auto-skips and quarantines them (plus an optional hardware watchdog for
-  hard lockups). See "Robustness" in [docs/setup.md](docs/setup.md).
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\bootstrap.ps1
+dropkick
+```
 
-## Configuration
+See [docs/setup-windows.md](docs/setup-windows.md).
 
-`~/.local/share/dropkick/dropkick.env` is the single source of truth (audio device,
-preset pack, remote port/token, display). Edit it, run `./scripts/sync-config.sh`,
-and restart. Full details in [docs/setup.md](docs/setup.md).
+**Preview the remote UI with no build** (mock API on a local Node server):
+
+```bash
+node scripts/dev-remote.mjs
+```
+
+## Remote control & Workshop
+
+The remote at `http://<host>:8080/<token>` has four views: **Now Playing**
+(transport, shuffle, lock, favorite), **Browse** (search the whole library,
+grouped by category), **Favorites**, and **Settings** (duration, transitions,
+beat sensitivity, FPS, audio input, pack, Reduce flashing, brightness, tint).
+It has dark and light themes, keyboard shortcuts, and chunked rendering for
+large packs.
+
+The Workshop edits Milkdrop `.milk` code in the browser. `Ctrl+Enter` applies it
+to the TV live (via `workshop/_scratch.milk`); Save writes it to `workshop/`,
+which also hot-reloads files edited on disk. See [docs/authoring.md](docs/authoring.md).
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/status` | Now playing, FPS, audio device, system telemetry |
+| `GET /api/presets` | Library catalog (`ETag`, `304 Not Modified`) |
+| `POST /api/next` `/prev` `/random` | Transport |
+| `POST /api/settings` | Validated, clamped setting changes |
+| `GET /api/audio/devices`, `POST /api/audio/select` | Audio input |
+| `POST /api/workshop/apply`, `/save` | Live apply and save a preset |
+
+Auth is the token, as the URL path (`/op1`), `?token=`, or the `X-Dropkick-Token`
+header. The complete table is in [docs/architecture.md](docs/architecture.md#http-api).
+
+## Keyboard shortcuts
+
+On the visualizer window. `Ctrl` is `Cmd` on macOS.
+
+| Key | Action |
+|---|---|
+| `N` / `P` or `Backspace` | Next / previous preset (previous is history-based) |
+| `R` | Random preset |
+| `Shift` + `N` / `P` / `R` | Same, with a hard cut |
+| `Space` or `L` | Lock / unlock the current preset |
+| `Y` | Toggle shuffle |
+| `F` | Favorite / unfavorite the current preset |
+| `Ctrl+F` or right-click | Toggle fullscreen |
+| `Up` / `Down` | Beat sensitivity ±0.01 |
+| `A` | Toggle aspect correction |
+| `Ctrl+I` | Next audio input |
+| `Ctrl+M` / `Ctrl+S` | Next display / stretch across monitors |
+| `Ctrl+C` | Copy preset filename |
+| `F1` | Help |
+| `F3` / `F4` / `F5` | Preset name / playback stats / FPS |
+| `Esc` | Toggle the menu bar |
+| `Ctrl+Q` | Quit |
+
+## Testing
+
+C++ core unit tests (JSON utilities, preset lists, system monitor) via CMake/CTest:
+
+```bash
+cmake -S tests/cpp -B build/dropkick-core-tests
+cmake --build build/dropkick-core-tests --config Debug
+ctest --test-dir build/dropkick-core-tests -C Debug --output-on-failure
+```
+
+Remote tests:
+
+```bash
+node --test tests/remote/test_remote.mjs
+```
+
+The Node suite checks static UI constraints (for example no external assets) and
+the mock HTTP API contract; it does not run the C++ server.
 
 ## Repository layout
 
-- `external/` — vendored, patched libprojectM + projectMSDL frontend (no submodules)
-- `remote/` — the mobile/desktop remote web app
-- `scripts/` — `bootstrap.sh`, `build.sh`, `sync-config.sh`, `enable-watchdog.sh`, `seed-blocklist.sh`
+- `external/` — vendored, patched libprojectM and projectMSDL frontend (no submodules)
+- `remote/` — the remote web app (HTML/CSS/JS, no build step)
+- `scripts/` — bootstrap, build, config sync, watchdog, blocklist seeding, `dev-remote.mjs`
 - `config/` — `dropkick.env` and the `projectMSDL.properties` template
 - `systemd/` — boot service unit
-- `patches/` — exported documentation patches (the GLES changes)
-- `docs/` — setup, presets, authoring, and patch notes
+- `patches/` — exported copies of the GLES patches
+- `tests/` — C++ core and remote tests
+- `assets/` — project icon
+- `docs/` — [architecture](docs/architecture.md), [setup](docs/setup.md), [Windows](docs/setup-windows.md), [presets](docs/presets.md), [authoring](docs/authoring.md), [patches](docs/patches.md)
 
 ## Credits & license
 
 Dropkick is built on **[projectM](https://github.com/projectM-visualizer/projectm)**
 and the **[projectM SDL frontend](https://github.com/projectM-visualizer/frontend-sdl2)**
-by the projectM Team and contributors. The frontend is GPLv3; libprojectM is LGPL
-v2.1. Dropkick's own glue (scripts, remote web app, systemd, docs) follows suit —
-see `external/*/LICENSE*` for the upstream terms.
+by the projectM Team and contributors. The frontend is GPLv3 and libprojectM is
+LGPL v2.1; Dropkick's own scripts, remote web app, systemd unit, and docs follow
+suit. See `external/*/LICENSE*` for the upstream terms.

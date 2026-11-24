@@ -4,12 +4,10 @@
 # path (belt-and-suspenders alongside the RPATH baked in at build time), and
 # provides sensible display defaults for the Pi's graphical session.
 DATA="$HOME/.local/share/dropkick"
-if [ -f "$DATA/dropkick.env" ]; then
-  set -a
-  . "$DATA/dropkick.env"
-  [ -f "$DATA/dropkick.local.env" ] && . "$DATA/dropkick.local.env"
-  set +a
-fi
+set -a
+[ -f "$DATA/dropkick.env" ] && . "$DATA/dropkick.env"
+[ -f "$DATA/dropkick.local.env" ] && . "$DATA/dropkick.local.env"
+set +a
 PREFIX="${DROPKICK_PREFIX:-$HOME/.local}"
 export LD_LIBRARY_PATH="$PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"

@@ -9,35 +9,43 @@
 #   powershell -ExecutionPolicy Bypass -File scripts\bootstrap.ps1
 #
 # Builds the bundled libprojectM + frontend with desktop OpenGL (WASAPI audio),
-# using vcpkg for dependencies. The strobe "Reduce flashing" filter is GLES-only,
-# so it is inert on Windows; everything else (remote, workshop, favorites,
-# settings, auto-skip) works.
+# using vcpkg for dependencies. The post-process pipeline (Reduce flashing,
+# Brightness, Screen Tint) runs on desktop OpenGL 3.3 as well as GLES 3.1, so all
+# features work: remote, workshop, favorites, settings, auto-skip.
 $ErrorActionPreference = "Stop"
 $Root   = Split-Path -Parent $PSScriptRoot
 $Prefix = Join-Path $env:USERPROFILE ".local"
 $Data   = Join-Path $env:USERPROFILE ".local\share\dropkick"
 $DataFwd = $Data -replace '\\','/'
 
+# $ErrorActionPreference does not cover native exit codes; without this a failed
+# build would fall through and stage the previous run's binaries.
+function Invoke-Checked {
+    param([string]$Cmd, [string[]]$ArgList)
+    & $Cmd @ArgList
+    if ($LASTEXITCODE -ne 0) { throw "$Cmd failed with exit code $LASTEXITCODE" }
+}
+
 Write-Host "== vcpkg =="
 $Vcpkg = if ($env:VCPKG_ROOT) { $env:VCPKG_ROOT } else { Join-Path $Root "vcpkg" }
 if (-not (Test-Path (Join-Path $Vcpkg "vcpkg.exe"))) {
-    if (-not (Test-Path $Vcpkg)) { git clone https://github.com/microsoft/vcpkg.git $Vcpkg }
-    & (Join-Path $Vcpkg "bootstrap-vcpkg.bat")
+    if (-not (Test-Path $Vcpkg)) { Invoke-Checked git @("clone", "https://github.com/microsoft/vcpkg.git", $Vcpkg) }
+    Invoke-Checked (Join-Path $Vcpkg "bootstrap-vcpkg.bat") @()
 }
 $Toolchain = Join-Path $Vcpkg "scripts\buildsystems\vcpkg.cmake"
 
 Write-Host "== Build libprojectM =="
-cmake -S "$Root\external\projectm" -B "$Root\external\projectm\build" `
-    -DCMAKE_TOOLCHAIN_FILE="$Toolchain" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$Prefix"
-cmake --build "$Root\external\projectm\build" --config Release
-cmake --install "$Root\external\projectm\build" --config Release
+Invoke-Checked cmake @("-S", "$Root\external\projectm", "-B", "$Root\external\projectm\build",
+    "-DCMAKE_TOOLCHAIN_FILE=$Toolchain", "-DCMAKE_BUILD_TYPE=Release", "-DCMAKE_INSTALL_PREFIX=$Prefix")
+Invoke-Checked cmake @("--build", "$Root\external\projectm\build", "--config", "Release")
+Invoke-Checked cmake @("--install", "$Root\external\projectm\build", "--config", "Release")
 
 Write-Host "== Build frontend =="
-cmake -S "$Root\external\frontend-sdl-cpp" -B "$Root\external\frontend-sdl-cpp\build" `
-    -DCMAKE_TOOLCHAIN_FILE="$Toolchain" -DCMAKE_BUILD_TYPE=Release `
-    -DCMAKE_PREFIX_PATH="$Prefix" -DCMAKE_INSTALL_PREFIX="$Prefix"
-cmake --build "$Root\external\frontend-sdl-cpp\build" --config Release
-cmake --install "$Root\external\frontend-sdl-cpp\build" --config Release
+Invoke-Checked cmake @("-S", "$Root\external\frontend-sdl-cpp", "-B", "$Root\external\frontend-sdl-cpp\build",
+    "-DCMAKE_TOOLCHAIN_FILE=$Toolchain", "-DCMAKE_BUILD_TYPE=Release",
+    "-DCMAKE_PREFIX_PATH=$Prefix", "-DCMAKE_INSTALL_PREFIX=$Prefix")
+Invoke-Checked cmake @("--build", "$Root\external\frontend-sdl-cpp\build", "--config", "Release")
+Invoke-Checked cmake @("--install", "$Root\external\frontend-sdl-cpp\build", "--config", "Release")
 
 # The frontend's install() drops projectMSDL.exe at the prefix root and does not
 # bundle its vcpkg runtime DLLs, while libprojectM installs its DLLs under bin\.
@@ -63,25 +71,25 @@ if (-not (Test-Path (Join-Path $Data "workshop\starter.milk"))) {
 # The frontend loads <exe-dir>\projectMSDL.properties. Write it with Windows paths.
 $PropsPath = Join-Path $Prefix "bin\projectMSDL.properties"
 
-# Reuse an existing remote token if the properties file already has one, otherwise
-# generate a random one so the phone remote isn't wide open to the whole LAN by
-# default. Blank remote.token in the file to run an open remote.
-$Token = ""
 if (Test-Path $PropsPath) {
-    $existing = Select-String -Path $PropsPath -Pattern '^\s*remote\.token\s*=\s*(\S+)' | Select-Object -First 1
+    # Never overwrite an existing file: it holds the user's edits, including an
+    # intentionally blank remote.token (open remote). Read the token only for the
+    # URL hints below.
+    $Token = ""
+    $existing = Select-String -Path $PropsPath -Pattern '^\s*remote\.token\s*=\s*(\S*)' | Select-Object -First 1
     if ($existing) { $Token = $existing.Matches[0].Groups[1].Value }
-}
-if (-not $Token) {
-    # Short, typeable token: the remote is reachable at http://<ip>:8080/op1.
-    # Bump the number (op2, op3, ...) in projectMSDL.properties to rotate it.
+    Write-Host "Keeping existing $PropsPath"
+} else {
+    # Short, typeable token so the phone remote isn't wide open to the LAN by
+    # default: http://<ip>:8080/op1. Bump the number (op2, op3, ...) in
+    # projectMSDL.properties to rotate it, or blank it for an open remote.
     $Token = "op1"
     Write-Host "Remote-control token: $Token"
-}
 
-# Windowed by default on Windows: a borderless-fullscreen window opened at launch
-# lands behind whatever has foreground and looks like the app died. Press F to
-# toggle fullscreen.
-$props = @"
+    # Windowed by default on Windows: a borderless-fullscreen window opened at launch
+    # lands behind whatever has foreground and looks like the app died. Press Ctrl+F
+    # (or right-click) to toggle fullscreen; plain F favorites the current preset.
+    $props = @"
 window.fullscreen = false
 window.width = 1280
 window.height = 720
@@ -96,7 +104,8 @@ remote.presetRoot = $DataFwd/presets
 remote.webRoot = $DataFwd/remote
 remote.workshopDir = $DataFwd/workshop
 "@
-$props | Out-File -FilePath $PropsPath -Encoding ascii
+    $props | Out-File -FilePath $PropsPath -Encoding ascii
+}
 
 # A "dropkick" command, like the Linux launcher. %USERPROFILE%\.local\bin must be
 # on PATH for this to work from a shell.

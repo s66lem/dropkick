@@ -10,6 +10,14 @@ builds the bundled libprojectM + frontend with `-DENABLE_GLES=TRUE`, and
 installs the binary, remote web assets, config, and preset/texture dirs. It also
 drops a `dropkick.env` into `~/.local/share/dropkick/` (only if one isn't there).
 
+The GLES build needs **CMake ≥ 3.27**. Raspberry Pi OS Bookworm's apt ships 3.25,
+so `bootstrap.sh` stops right after installing dependencies if CMake is older.
+Install a newer one from the [Kitware apt repository](https://apt.kitware.com/),
+`bookworm-backports`, or `pipx install cmake`, then rerun. To install somewhere
+other than `~/.local`, run `DROPKICK_PREFIX=/custom ./scripts/bootstrap.sh`; the
+prefix is saved to `dropkick.env` and reused by `sync-config.sh`, `build.sh`, and
+the `dropkick` launcher.
+
 ## 2. Add presets & textures
 Drop preset packs into subfolders:
 
@@ -36,16 +44,25 @@ Leave `DROPKICK_AUDIO_SOURCE` empty for the default device; list devices with
     sudo loginctl enable-linger "$USER"
 
 ## 5. Phone remote
-`bootstrap.sh` generates a random remote token on first install (stored as
-`DROPKICK_REMOTE_TOKEN` in `~/.local/share/dropkick/dropkick.env`) so the remote
-isn't open to your whole LAN by default — the final bootstrap line prints the
-full URL. On a phone on the same LAN, open `http://<pi-ip>:8080/?token=<token>`.
-To run an open remote with no auth, blank `DROPKICK_REMOTE_TOKEN`, re-run
-`sync-config.sh`, and open `http://<pi-ip>:8080` (the app logs a warning while
-unauthenticated).
+`bootstrap.sh` sets a short remote token (`op1`) on first install, stored as
+`DROPKICK_REMOTE_TOKEN` in `~/.local/share/dropkick/dropkick.env`, so the remote
+isn't open to your whole LAN by default. On a phone on the same LAN, open:
+
+    http://<pi-ip>:8080/op1
+
+The token is the URL path. `http://<pi-ip>:8080/?token=op1` also works, and API
+clients can send it as an `X-Dropkick-Token` header. To rotate it, change the
+value (`op2`, …) in `dropkick.env`, run `sync-config.sh`, and restart. To run an
+open remote with no auth, blank `DROPKICK_REMOTE_TOKEN`, re-run `sync-config.sh`,
+and open `http://<pi-ip>:8080` (the app logs a warning while unauthenticated).
+The token is a LAN access gate, not strong authentication; don't expose the port
+to the internet. The full endpoint list is in [architecture.md](architecture.md#http-api).
 
 ## Incremental rebuild after edits
     ./scripts/build.sh
+
+Rebuilds and reinstalls both forks and re-syncs `remote/` into
+`~/.local/share/dropkick/remote/`, so web UI edits deploy too (reload the page).
 
 ## Launching
 `bootstrap.sh` installs a `dropkick` launcher on your PATH. Just run:
@@ -89,5 +106,10 @@ Pi, the offending preset is quarantined on the next boot, and it resumes — ove
 hours the blocklist self-populates. Set the duration back up when the blocked count
 stops climbing. Undo the blocklist anytime via Settings → Blocked presets → Clear.
 
-## GLES patch rationale
-See `docs/patches.md`.
+To pre-seed the blocklist from a static heuristic instead of waiting for the
+scan: `./scripts/seed-blocklist.sh --dry-run`, then without `--dry-run`. Restart
+Dropkick afterwards; the blocklist is read at startup.
+
+## More
+- [architecture.md](architecture.md) — threading, rendering pipeline, watchdogs, HTTP API
+- [patches.md](patches.md) — GLES patch rationale
