@@ -217,6 +217,7 @@ impl PlaylistState {
             }
         }
         found.sort();
+        found.shrink_to_fit();
         self.items = found;
         self.catalog_revision = self.catalog_revision.wrapping_add(1);
         if self.position >= self.items.len() {

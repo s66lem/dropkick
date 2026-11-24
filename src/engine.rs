@@ -321,13 +321,16 @@ impl DropkickEngine {
             frame: self.frame_count,
         };
         self.engine.render(&mut encoder, self.post.scene_view(), clock);
-        self.post.apply(queue, &mut encoder, &settings, surface_target, want_preview);
+        self.post.apply(device, queue, &mut encoder, &settings, surface_target, want_preview);
         queue.submit(Some(encoder.finish()));
 
         if want_preview {
             if let Some(bmp) = self.post.read_preview_bmp(device) {
                 self.state.preview.lock().unwrap().store_frame(bmp, Instant::now());
             }
+        } else {
+            // Non-blocking poll reclaims finished command buffers and dropped preset pipelines.
+            let _ = device.poll(wgpu::PollType::Poll);
         }
 
         let frame_elapsed = frame_start.elapsed();

@@ -66,23 +66,31 @@ pub fn spawn_http_server(
     state: Arc<SharedState>,
     host: String,
     port: u16,
-) -> std::io::Result<(std::net::SocketAddr, tokio::runtime::Runtime)> {
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(2)
-        .enable_all()
-        .build()?;
+) -> std::io::Result<(std::net::SocketAddr, std::thread::JoinHandle<()>)> {
     let addr: std::net::SocketAddr = format!("{host}:{port}")
         .parse()
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
-    let listener = rt.block_on(tokio::net::TcpListener::bind(addr))?;
-    let local_addr = listener.local_addr()?;
-    let app = build_router(state);
-    rt.spawn(async move {
-        if let Err(e) = axum::serve(listener, app).await {
-            log::error!("HTTP server error: {e}");
-        }
-    });
-    Ok((local_addr, rt))
+    let std_listener = std::net::TcpListener::bind(addr)?;
+    std_listener.set_nonblocking(true)?;
+    let local_addr = std_listener.local_addr()?;
+
+    let handle = std::thread::Builder::new()
+        .name("dropkick-http".to_string())
+        .spawn(move || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("Failed to create single-thread tokio runtime");
+            rt.block_on(async move {
+                let listener = tokio::net::TcpListener::from_std(std_listener)
+                    .expect("Failed to adopt TcpListener");
+                let app = build_router(state);
+                if let Err(e) = axum::serve(listener, app).await {
+                    log::error!("HTTP server error: {e}");
+                }
+            });
+        })?;
+    Ok((local_addr, handle))
 }
 
 fn ct_eq(a: &[u8], b: &[u8]) -> bool {

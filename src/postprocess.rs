@@ -73,6 +73,17 @@ fn fs_main(in: VsOut) -> FsOut {
     out.smoothed = vec4<f32>(smoothed, 1.0);
     return out;
 }
+
+@fragment
+fn fs_display_only(in: VsOut) -> @location(0) vec4<f32> {
+    var color = textureSample(u_scene, u_sampler, in.uv).rgb * u.brightness;
+    if (u.tint_enabled > 0.5) {
+        let lum = dot(color, vec3<f32>(0.2126, 0.7152, 0.0722));
+        let tint = vec3<f32>(u.tint_r, u.tint_g, u.tint_b);
+        color = mix(color, lum * tint, u.tint_strength);
+    }
+    return vec4<f32>(clamp(color, vec3<f32>(0.0), vec3<f32>(1.0)), 1.0);
+}
 "#;
 
 const BLIT_WGSL: &str = r#"
@@ -100,26 +111,39 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
 }
 "#;
 
+struct DisplayTargets {
+    _tex: wgpu::Texture,
+    view: wgpu::TextureView,
+    blit_bg: wgpu::BindGroup,
+    simple_bg: wgpu::BindGroup,
+}
+
+struct HistoryTargets {
+    _textures: [wgpu::Texture; 2],
+    views: [wgpu::TextureView; 2],
+    post_bgs: [wgpu::BindGroup; 2],
+}
+
 pub struct PostProcessor {
     width: u32,
     height: u32,
-    scene_tex: wgpu::Texture,
+    _scene_tex: wgpu::Texture,
     scene_view: wgpu::TextureView,
-    display_tex: wgpu::Texture,
-    display_view: wgpu::TextureView,
-    history: [wgpu::Texture; 2],
-    history_views: [wgpu::TextureView; 2],
+    scene_blit_bg: wgpu::BindGroup,
+
+    // Lazily allocated only while post-processing effects are active, keeping idle VRAM/RSS small.
+    display: Option<DisplayTargets>,
+    history: Option<HistoryTargets>,
     hist_idx: usize,
     history_valid: bool,
 
     sampler: wgpu::Sampler,
     uniform_buf: wgpu::Buffer,
     post_bgl: wgpu::BindGroupLayout,
-    post_bgs: [wgpu::BindGroup; 2],
-    post_pipeline: wgpu::RenderPipeline,
+    post_mrt_pipeline: wgpu::RenderPipeline,
+    post_simple_pipeline: wgpu::RenderPipeline,
 
     blit_bgl: wgpu::BindGroupLayout,
-    blit_bg: wgpu::BindGroup,
     surface_blit_pipeline: wgpu::RenderPipeline,
 
     // On-demand 240x150 preview downscale + staging buffer
@@ -184,8 +208,8 @@ impl PostProcessor {
             bind_group_layouts: &[Some(&post_bgl)],
             immediate_size: 0,
         });
-        let post_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("dropkick-post-pipeline"),
+        let post_mrt_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("dropkick-post-mrt-pipeline"),
             layout: Some(&post_pl),
             vertex: wgpu::VertexState {
                 module: &post_shader,
@@ -208,6 +232,31 @@ impl PostProcessor {
                         write_mask: wgpu::ColorWrites::ALL,
                     }),
                 ],
+                compilation_options: Default::default(),
+            }),
+            primitive: Default::default(),
+            depth_stencil: None,
+            multisample: Default::default(),
+            multiview_mask: None,
+            cache: None,
+        });
+        let post_simple_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("dropkick-post-simple-pipeline"),
+            layout: Some(&post_pl),
+            vertex: wgpu::VertexState {
+                module: &post_shader,
+                entry_point: Some("vs_main"),
+                buffers: &[],
+                compilation_options: Default::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &post_shader,
+                entry_point: Some("fs_display_only"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: wgpu::TextureFormat::Rgba8Unorm,
+                    blend: None,
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
                 compilation_options: Default::default(),
             }),
             primitive: Default::default(),
@@ -282,27 +331,26 @@ impl PostProcessor {
             mapped_at_creation: false,
         });
 
-        let (scene_tex, scene_view, display_tex, display_view, history, history_views, post_bgs, blit_bg) =
-            create_size_dependent(device, width.max(1), height.max(1), &sampler, &uniform_buf, &post_bgl, &blit_bgl);
+        let w = width.max(1);
+        let h = height.max(1);
+        let (scene_tex, scene_view, scene_blit_bg) = create_scene_target(device, w, h, &sampler, &blit_bgl);
 
         Self {
-            width: width.max(1),
-            height: height.max(1),
-            scene_tex,
+            width: w,
+            height: h,
+            _scene_tex: scene_tex,
             scene_view,
-            display_tex,
-            display_view,
-            history,
-            history_views,
+            scene_blit_bg,
+            display: None,
+            history: None,
             hist_idx: 0,
             history_valid: false,
             sampler,
             uniform_buf,
             post_bgl,
-            post_bgs,
-            post_pipeline,
+            post_mrt_pipeline,
+            post_simple_pipeline,
             blit_bgl,
-            blit_bg,
             surface_blit_pipeline,
             preview_tex,
             preview_view,
@@ -320,16 +368,14 @@ impl PostProcessor {
         }
         self.width = w;
         self.height = h;
-        let (scene_tex, scene_view, display_tex, display_view, history, history_views, post_bgs, blit_bg) =
-            create_size_dependent(device, w, h, &self.sampler, &self.uniform_buf, &self.post_bgl, &self.blit_bgl);
-        self.scene_tex = scene_tex;
+        let (scene_tex, scene_view, scene_blit_bg) =
+            create_scene_target(device, w, h, &self.sampler, &self.blit_bgl);
+        self._scene_tex = scene_tex;
         self.scene_view = scene_view;
-        self.display_tex = display_tex;
-        self.display_view = display_view;
-        self.history = history;
-        self.history_views = history_views;
-        self.post_bgs = post_bgs;
-        self.blit_bg = blit_bg;
+        self.scene_blit_bg = scene_blit_bg;
+        // Drop lazy targets; they will reallocate at the new dimensions if still needed.
+        self.display = None;
+        self.history = None;
         self.history_valid = false;
     }
 
@@ -337,73 +383,140 @@ impl PostProcessor {
         &self.scene_view
     }
 
-    /// Runs the post-process MRT pass (`scene -> display + smoothed history`), optionally blits
-    /// to a window surface, and optionally downscales to the 240x150 preview staging buffer.
+    /// Runs the post-process pass only when brightness/tint/reduce-flashing is active, otherwise
+    /// blits `scene_tex` directly (saving 3 full-res textures and a full-screen render pass).
     pub fn apply(
         &mut self,
+        device: &wgpu::Device,
         queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
         settings: &Settings,
         surface_target: Option<&wgpu::TextureView>,
         capture_preview: bool,
     ) {
-        let persistence = if settings.reduce_flashing && self.history_valid {
-            // Map flashStrength (0..1) into smooth persistence (0..0.88) so motion stays responsive
-            (settings.flash_strength.clamp(0.0, 1.0) * 0.88).clamp(0.0, 0.88)
+        let brightness = settings.brightness.clamp(0.05, 1.0);
+        let need_post = settings.reduce_flashing || settings.tint_enabled || (brightness - 1.0).abs() > 0.001;
+
+        if !need_post {
+            self.display = None;
+            self.history = None;
+            self.history_valid = false;
         } else {
-            0.0
-        };
-        let rgb = settings.tint_rgb();
-        let u = PostUniforms {
-            brightness: settings.brightness.clamp(0.05, 1.0),
-            persistence,
-            tint_enabled: if settings.tint_enabled { 1.0 } else { 0.0 },
-            tint_strength: settings.tint_strength.clamp(0.0, 1.0),
-            tint_r: rgb[0],
-            tint_g: rgb[1],
-            tint_b: rgb[2],
-            _pad: 0.0,
-        };
-        queue.write_buffer(&self.uniform_buf, 0, bytemuck::bytes_of(&u));
+            if self.display.is_none() {
+                self.display = Some(create_display_target(
+                    device,
+                    self.width,
+                    self.height,
+                    &self.scene_view,
+                    &self.sampler,
+                    &self.uniform_buf,
+                    &self.post_bgl,
+                    &self.blit_bgl,
+                ));
+            }
+            if settings.reduce_flashing {
+                if self.history.is_none() {
+                    self.history = Some(create_history_targets(
+                        device,
+                        self.width,
+                        self.height,
+                        &self.scene_view,
+                        &self.sampler,
+                        &self.uniform_buf,
+                        &self.post_bgl,
+                    ));
+                    self.history_valid = false;
+                }
+            } else {
+                self.history = None;
+                self.history_valid = false;
+            }
 
-        let read_idx = self.hist_idx;
-        let write_idx = 1 - self.hist_idx;
+            let persistence = if settings.reduce_flashing && self.history_valid {
+                // Map flashStrength (0..1) into smooth persistence (0..0.88) so motion stays responsive
+                (settings.flash_strength.clamp(0.0, 1.0) * 0.88).clamp(0.0, 0.88)
+            } else {
+                0.0
+            };
+            let rgb = settings.tint_rgb();
+            let u = PostUniforms {
+                brightness,
+                persistence,
+                tint_enabled: if settings.tint_enabled { 1.0 } else { 0.0 },
+                tint_strength: settings.tint_strength.clamp(0.0, 1.0),
+                tint_r: rgb[0],
+                tint_g: rgb[1],
+                tint_b: rgb[2],
+                _pad: 0.0,
+            };
+            queue.write_buffer(&self.uniform_buf, 0, bytemuck::bytes_of(&u));
 
-        {
-            let mut rp = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("dropkick-post-pass"),
-                color_attachments: &[
-                    Some(wgpu::RenderPassColorAttachment {
-                        view: &self.display_view,
+            let disp = self.display.as_ref().unwrap();
+            if let Some(hist) = self.history.as_ref() {
+                let read_idx = self.hist_idx;
+                let write_idx = 1 - self.hist_idx;
+                {
+                    let mut rp = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        label: Some("dropkick-post-mrt-pass"),
+                        color_attachments: &[
+                            Some(wgpu::RenderPassColorAttachment {
+                                view: &disp.view,
+                                depth_slice: None,
+                                resolve_target: None,
+                                ops: wgpu::Operations {
+                                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                                    store: wgpu::StoreOp::Store,
+                                },
+                            }),
+                            Some(wgpu::RenderPassColorAttachment {
+                                view: &hist.views[write_idx],
+                                depth_slice: None,
+                                resolve_target: None,
+                                ops: wgpu::Operations {
+                                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                                    store: wgpu::StoreOp::Store,
+                                },
+                            }),
+                        ],
+                        depth_stencil_attachment: None,
+                        timestamp_writes: None,
+                        occlusion_query_set: None,
+                        multiview_mask: None,
+                    });
+                    rp.set_pipeline(&self.post_mrt_pipeline);
+                    rp.set_bind_group(0, &hist.post_bgs[read_idx], &[]);
+                    rp.draw(0..3, 0..1);
+                }
+                self.hist_idx = write_idx;
+                self.history_valid = true;
+            } else {
+                let mut rp = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("dropkick-post-simple-pass"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &disp.view,
                         depth_slice: None,
                         resolve_target: None,
                         ops: wgpu::Operations {
                             load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
                             store: wgpu::StoreOp::Store,
                         },
-                    }),
-                    Some(wgpu::RenderPassColorAttachment {
-                        view: &self.history_views[write_idx],
-                        depth_slice: None,
-                        resolve_target: None,
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                            store: wgpu::StoreOp::Store,
-                        },
-                    }),
-                ],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-                multiview_mask: None,
-            });
-            rp.set_pipeline(&self.post_pipeline);
-            rp.set_bind_group(0, &self.post_bgs[read_idx], &[]);
-            rp.draw(0..3, 0..1);
+                    })],
+                    depth_stencil_attachment: None,
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                    multiview_mask: None,
+                });
+                rp.set_pipeline(&self.post_simple_pipeline);
+                rp.set_bind_group(0, &disp.simple_bg, &[]);
+                rp.draw(0..3, 0..1);
+            }
         }
 
-        self.hist_idx = write_idx;
-        self.history_valid = settings.reduce_flashing;
+        let source_blit_bg = self
+            .display
+            .as_ref()
+            .map(|d| &d.blit_bg)
+            .unwrap_or(&self.scene_blit_bg);
 
         if let Some(target) = surface_target {
             let mut rp = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -423,7 +536,7 @@ impl PostProcessor {
                 multiview_mask: None,
             });
             rp.set_pipeline(&self.surface_blit_pipeline);
-            rp.set_bind_group(0, &self.blit_bg, &[]);
+            rp.set_bind_group(0, source_blit_bg, &[]);
             rp.draw(0..3, 0..1);
         }
 
@@ -446,7 +559,7 @@ impl PostProcessor {
                     multiview_mask: None,
                 });
                 rp.set_pipeline(&self.preview_pipeline);
-                rp.set_bind_group(0, &self.blit_bg, &[]);
+                rp.set_bind_group(0, source_blit_bg, &[]);
                 rp.draw(0..3, 0..1);
             }
             encoder.copy_texture_to_buffer(
@@ -533,54 +646,85 @@ fn create_rgba_tex(
     })
 }
 
-#[allow(clippy::type_complexity)]
-fn create_size_dependent(
+fn create_scene_target(
     device: &wgpu::Device,
     width: u32,
     height: u32,
     sampler: &wgpu::Sampler,
+    blit_bgl: &wgpu::BindGroupLayout,
+) -> (wgpu::Texture, wgpu::TextureView, wgpu::BindGroup) {
+    let scene_tex = create_rgba_tex(device, "dropkick-scene", width, height, false);
+    let scene_view = scene_tex.create_view(&Default::default());
+    let scene_blit_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("dropkick-scene-blit-bg"),
+        layout: blit_bgl,
+        entries: &[
+            wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&scene_view) },
+            wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(sampler) },
+        ],
+    });
+    (scene_tex, scene_view, scene_blit_bg)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn create_display_target(
+    device: &wgpu::Device,
+    width: u32,
+    height: u32,
+    scene_view: &wgpu::TextureView,
+    sampler: &wgpu::Sampler,
     uniform_buf: &wgpu::Buffer,
     post_bgl: &wgpu::BindGroupLayout,
     blit_bgl: &wgpu::BindGroupLayout,
-) -> (
-    wgpu::Texture,
-    wgpu::TextureView,
-    wgpu::Texture,
-    wgpu::TextureView,
-    [wgpu::Texture; 2],
-    [wgpu::TextureView; 2],
-    [wgpu::BindGroup; 2],
-    wgpu::BindGroup,
-) {
-    let scene_tex = create_rgba_tex(device, "dropkick-scene", width, height, false);
-    let scene_view = scene_tex.create_view(&Default::default());
-    let display_tex = create_rgba_tex(device, "dropkick-display", width, height, false);
-    let display_view = display_tex.create_view(&Default::default());
+) -> DisplayTargets {
+    let tex = create_rgba_tex(device, "dropkick-display", width, height, false);
+    let view = tex.create_view(&Default::default());
+    let blit_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("dropkick-display-blit-bg"),
+        layout: blit_bgl,
+        entries: &[
+            wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&view) },
+            wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(sampler) },
+        ],
+    });
+    let simple_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("dropkick-post-simple-bg"),
+        layout: post_bgl,
+        entries: &[
+            wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(scene_view) },
+            wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(scene_view) },
+            wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(sampler) },
+            wgpu::BindGroupEntry { binding: 3, resource: uniform_buf.as_entire_binding() },
+        ],
+    });
+    DisplayTargets { _tex: tex, view, blit_bg, simple_bg }
+}
+
+fn create_history_targets(
+    device: &wgpu::Device,
+    width: u32,
+    height: u32,
+    scene_view: &wgpu::TextureView,
+    sampler: &wgpu::Sampler,
+    uniform_buf: &wgpu::Buffer,
+    post_bgl: &wgpu::BindGroupLayout,
+) -> HistoryTargets {
     let h0 = create_rgba_tex(device, "dropkick-hist-0", width, height, false);
     let h1 = create_rgba_tex(device, "dropkick-hist-1", width, height, false);
     let hv0 = h0.create_view(&Default::default());
     let hv1 = h1.create_view(&Default::default());
-
-    let make_post_bg = |prev: &wgpu::TextureView| {
+    let make_bg = |prev: &wgpu::TextureView| {
         device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("dropkick-post-bg"),
             layout: post_bgl,
             entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&scene_view) },
+                wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(scene_view) },
                 wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(prev) },
                 wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(sampler) },
                 wgpu::BindGroupEntry { binding: 3, resource: uniform_buf.as_entire_binding() },
             ],
         })
     };
-    let post_bgs = [make_post_bg(&hv0), make_post_bg(&hv1)];
-    let blit_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("dropkick-blit-bg"),
-        layout: blit_bgl,
-        entries: &[
-            wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&display_view) },
-            wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(sampler) },
-        ],
-    });
-    (scene_tex, scene_view, display_tex, display_view, [h0, h1], [hv0, hv1], post_bgs, blit_bg)
+    let post_bgs = [make_bg(&hv0), make_bg(&hv1)];
+    HistoryTargets { _textures: [h0, h1], views: [hv0, hv1], post_bgs }
 }

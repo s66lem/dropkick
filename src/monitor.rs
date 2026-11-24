@@ -8,28 +8,35 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, SystemTime};
-use sysinfo::{Components, System};
+#[cfg(not(target_os = "windows"))]
+use sysinfo::Components;
+use sysinfo::System;
 
 pub fn spawn_monitor(state: Arc<SharedState>, workshop_dir: PathBuf, stop: Arc<AtomicBool>) -> std::thread::JoinHandle<()> {
     std::thread::spawn(move || {
         let mut sys = System::new();
+        #[cfg(not(target_os = "windows"))]
         let mut components = Components::new_with_refreshed_list();
         let mut workshop_mtimes: HashMap<PathBuf, SystemTime> = scan_workshop(&workshop_dir);
 
         while !stop.load(Ordering::Relaxed) {
             sys.refresh_cpu_usage();
             sys.refresh_memory();
-            components.refresh(true);
 
             let cpu = sys.global_cpu_usage().clamp(0.0, 100.0).round() as u32;
             let mem_used = sys.used_memory() / (1024 * 1024);
             let mem_total = sys.total_memory() / (1024 * 1024);
 
+            #[allow(unused_mut)]
             let mut best_temp: Option<f32> = None;
-            for c in components.list() {
-                if let Some(t) = c.temperature() {
-                    if t > 0.0 && t < 150.0 {
-                        best_temp = Some(best_temp.map_or(t, |cur| cur.max(t)));
+            #[cfg(not(target_os = "windows"))]
+            {
+                components.refresh(true);
+                for c in components.list() {
+                    if let Some(t) = c.temperature() {
+                        if t > 0.0 && t < 150.0 {
+                            best_temp = Some(best_temp.map_or(t, |cur| cur.max(t)));
+                        }
                     }
                 }
             }

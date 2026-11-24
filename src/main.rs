@@ -69,22 +69,81 @@ fn main() {
     }
 }
 
+fn preferred_backends() -> wgpu::Backends {
+    // Pick a single primary backend so wgpu doesn't probe and load unused GPU driver stacks
+    // (Vulkan + DX12 + OpenGL all at once). Vulkan reclaims pipeline memory cleanly under
+    // rapid preset switching and keeps boot footprint ~112 MB RSS. Override via `WGPU_BACKEND`.
+    #[cfg(target_os = "macos")]
+    let default = wgpu::Backends::METAL;
+    #[cfg(target_os = "windows")]
+    let default = wgpu::Backends::VULKAN;
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    let default = wgpu::Backends::VULKAN | wgpu::Backends::GL;
+    wgpu::Backends::from_env().unwrap_or(default)
+}
+
+fn create_wgpu_instance(display: Option<Box<dyn wgpu::wgt::WgpuHasDisplayHandle>>) -> wgpu::Instance {
+    let mut desc = match display {
+        Some(d) => wgpu::InstanceDescriptor::new_with_display_handle(d).with_env(),
+        None => wgpu::InstanceDescriptor::new_without_display_handle().with_env(),
+    };
+    desc.backends = preferred_backends();
+    desc.memory_budget_thresholds = wgpu::MemoryBudgetThresholds {
+        for_resource_creation: Some(90),
+        for_device_loss: None,
+    };
+    wgpu::Instance::new(desc)
+}
+
+#[cfg(target_os = "windows")]
+fn create_fallback_instance() -> Option<wgpu::Instance> {
+    if wgpu::Backends::from_env().is_some() {
+        return None;
+    }
+    let mut desc = wgpu::InstanceDescriptor::new_without_display_handle().with_env();
+    desc.backends = wgpu::Backends::DX12;
+    Some(wgpu::Instance::new(desc))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn create_fallback_instance() -> Option<wgpu::Instance> {
+    None
+}
+
+fn device_descriptor() -> wgpu::DeviceDescriptor<'static> {
+    wgpu::DeviceDescriptor {
+        label: Some("dropkick-device"),
+        memory_hints: wgpu::MemoryHints::MemoryUsage,
+        ..Default::default()
+    }
+}
+
 fn run_headless(
     cfg: AppConfig,
     audio: AudioCapture,
     state: Arc<SharedState>,
     stop: Arc<AtomicBool>,
 ) {
-    let instance = wgpu::Instance::default();
+    let instance = create_wgpu_instance(None);
     let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
         power_preference: wgpu::PowerPreference::HighPerformance,
         ..Default::default()
     }))
+    .or_else(|e| {
+        if let Some(fb) = create_fallback_instance() {
+            pollster::block_on(fb.request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                ..Default::default()
+            }))
+        } else {
+            Err(e)
+        }
+    })
     .expect("No wgpu adapter available for headless rendering");
     let info = adapter.get_info();
     println!("  GPU:     {} ({:?}) [headless]", info.name, info.backend);
 
-    let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
+    let (device, queue) = pollster::block_on(adapter.request_device(&device_descriptor()))
         .expect("Failed to create wgpu device");
 
     let mut dk = DropkickEngine::new(
@@ -142,7 +201,7 @@ impl ApplicationHandler for WindowedApp {
         let window = Arc::new(event_loop.create_window(attrs).expect("Failed to create window"));
         let size = window.inner_size();
 
-        let instance = wgpu::Instance::default();
+        let instance = create_wgpu_instance(Some(Box::new(event_loop.owned_display_handle())));
         let surface = instance
             .create_surface(window.clone())
             .expect("Failed to create wgpu surface");
@@ -155,7 +214,7 @@ impl ApplicationHandler for WindowedApp {
         let info = adapter.get_info();
         println!("  GPU:     {} ({:?})", info.name, info.backend);
 
-        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
+        let (device, queue) = pollster::block_on(adapter.request_device(&device_descriptor()))
             .expect("Failed to create wgpu device");
 
         let caps = surface.get_capabilities(&adapter);
