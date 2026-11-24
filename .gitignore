@@ -2,6 +2,7 @@
 build/
 */build/
 install/
+target/
 # vcpkg toolchain clone (Windows bootstrap)
 vcpkg/
 # Editor

@@ -1,0 +1,28 @@
+[package]
+name = "dropkick"
+version = "0.1.0"
+edition = "2024"
+description = "Pure-Rust MilkDrop / projectM audio visualizer (Lactea + wgpu) with LAN remote control"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+axum = "0.8"
+bytemuck = { version = "1", features = ["derive"] }
+cpal = "0.15"
+fastrand = "2"
+lactea = "0.2.2"
+lactea-preset = "0.2.2"
+log = "0.4"
+pollster = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sysinfo = "0.33"
+tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "time"] }
+walkdir = "2"
+wgpu = "30"
+winit = "0.30"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
