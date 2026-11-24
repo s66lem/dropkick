@@ -12,10 +12,11 @@
 #include <Poco/Util/Subsystem.h>
 
 #include <cstdint>
-#include <map>
 #include <memory>
-#include <set>
+#include <random>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 class ProjectMWrapper : public Poco::Util::Subsystem
@@ -48,7 +49,7 @@ public:
      * @brief Returns the targeted FPS value.
      * @return The user-configured target FPS. Can be 0, which means unlimited.
      */
-    int TargetFPS();
+    int TargetFPS() const;
 
     /**
      * @brief Updates projectM with the current, actual FPS value.
@@ -107,7 +108,9 @@ public:
     /**
      * @brief Returns the current playback status (preset name, position, shuffle, lock).
      */
-    PlaybackStatus CurrentStatus() const;
+    const PlaybackStatus& CurrentStatus();
+    uint64_t PlaylistRevision() const { return _playlistRevision; }
+    void MarkPlaylistChanged() { ++_playlistRevision; }
 
     /**
      * @brief Returns the full playlist as a vector of preset file paths.
@@ -177,7 +180,7 @@ private:
      */
     void OnConfigurationPropertyRemoved(const std::string& key);
 
-    std::string CurrentPresetPath() const; //!< Path of the currently-playing playlist item ("" if none).
+    void RemoveCurrentPreset(uint32_t position, const std::string& path);
 
     // GPU-hang auto-skip: quarantine presets that crash/hang the app. Render thread only.
     void LoadBlocklist();                          //!< Read blocklist file into memory.
@@ -191,12 +194,17 @@ private:
     void LoadSlowCounts();                          //!< Read persistent low-FPS strike counts.
     void SaveSlowCounts();                          //!< Persist strike counts to disk.
 
-    std::set<std::string> _blocklist;   //!< Preset paths that hang/kill the app.
+    PlaybackStatus _playbackStatus;
+    uint64_t _playlistRevision{0};
+    uint64_t _statusRevision{0};
+    int _targetFps{60};
+    std::mt19937 _playlistRng{std::random_device{}()};
+    std::unordered_set<std::string> _blocklist; //!< Preset paths that hang/kill the app.
     std::string _blocklistPath;         //!< ~/.local/share/dropkick/blocklist.txt
-    std::set<std::string> _dislikes;    //!< Preset paths the user disliked.
+    std::unordered_set<std::string> _dislikes; //!< Preset paths the user disliked.
     std::string _dislikePath;           //!< ~/.local/share/dropkick/dislikes.txt
     std::string _breadcrumbPath;        //!< ~/.local/share/dropkick/state/loading
-    std::map<std::string, uint32_t> _slowCounts; //!< Preset path -> low-FPS auto-skip strikes.
+    std::unordered_map<std::string, uint32_t> _slowCounts; //!< Preset path -> low-FPS auto-skip strikes.
     std::string _slowCountsPath;                 //!< ~/.local/share/dropkick/slowcounts.txt
 
     Poco::AutoPtr<Poco::Util::AbstractConfiguration> _userConfig; //!< View of the "projectM" configuration subkey in the "user" configuration.

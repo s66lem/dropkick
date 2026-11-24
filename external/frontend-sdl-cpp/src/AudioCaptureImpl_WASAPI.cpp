@@ -98,7 +98,8 @@ int AudioCaptureImpl::AudioDeviceIndex() const
 
 std::string AudioCaptureImpl::AudioDeviceName() const
 {
-    if (_currentAudioDeviceIndex < 0)
+    const auto index = AudioDeviceIndex();
+    if (index < 0)
     {
         return "System Default Audio Device";
     }
@@ -107,12 +108,12 @@ std::string AudioCaptureImpl::AudioDeviceName() const
     auto captureDevices{GetAudioDeviceList(enumerator)};
     enumerator->Release();
 
-    if (captureDevices.empty() || _currentAudioDeviceIndex >= static_cast<int>(captureDevices.size()))
+    if (index >= static_cast<int>(captureDevices.size()))
     {
         return {};
     }
 
-    return captureDevices.at(_currentAudioDeviceIndex).FriendlyName();
+    return captureDevices.at(index).FriendlyName();
 }
 
 void AudioCaptureImpl::FillBuffer()
@@ -361,7 +362,8 @@ void AudioCaptureImpl::CaptureThread()
 
         IMMDevice* device{nullptr};
 
-        if (_currentAudioDeviceIndex == -1 || _currentAudioDeviceIndex >= devices.size())
+        const auto index = AudioDeviceIndex();
+        if (index < 0 || static_cast<size_t>(index) >= devices.size())
         {
             // Get the default render endpoint for opening it as a loopback device.
             result = enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &device);
@@ -376,9 +378,10 @@ void AudioCaptureImpl::CaptureThread()
         else
         {
             // Get a device by its ID according to the currently selected index.
-            useLoopback = devices.at(_currentAudioDeviceIndex).IsRenderDevice();
-            deviceName = devices.at(_currentAudioDeviceIndex).FriendlyName();
-            result = enumerator->GetDevice(devices.at(_currentAudioDeviceIndex).DeviceId(), &device);
+            const auto& selected = devices.at(index);
+            useLoopback = selected.IsRenderDevice();
+            deviceName = selected.FriendlyName();
+            result = enumerator->GetDevice(selected.DeviceId(), &device);
 
             if (FAILED(result))
             {

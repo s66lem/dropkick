@@ -22,6 +22,12 @@ add_executable(projectMSDL WIN32 MACOSX_BUNDLE
         RemoteControl.h
         PostProcess.cpp
         PostProcess.h
+        JsonUtil.cpp
+        JsonUtil.h
+        PresetLists.cpp
+        PresetLists.h
+        SystemMonitor.cpp
+        SystemMonitor.h
         main.cpp
         projectMSDL.rc
         )
@@ -67,12 +73,18 @@ else ()
             )
 endif ()
 
-# GLEW needs to be initialized if libprojectM depends on it (<v4.2).
-if (TARGET GLEW::glew OR TARGET GLEW::glew_s)
-    target_compile_definitions(projectMSDL
-            PRIVATE
-            USE_GLEW
-            )
+# Desktop post-processing uses GLEW for the GL 3.3 entry points.
+if (NOT ENABLE_GLES)
+    if (NOT TARGET GLEW::glew AND NOT TARGET GLEW::glew_s AND NOT TARGET GLEW::GLEW)
+        find_package(GLEW QUIET)
+    endif ()
+    foreach (glew_target GLEW::glew GLEW::glew_s GLEW::GLEW)
+        if (TARGET ${glew_target})
+            target_compile_definitions(projectMSDL PRIVATE USE_GLEW)
+            target_link_libraries(projectMSDL PRIVATE ${glew_target})
+            break()
+        endif ()
+    endforeach ()
 endif ()
 
 set_source_files_properties(ProjectMSDLApplication.cpp PROPERTIES

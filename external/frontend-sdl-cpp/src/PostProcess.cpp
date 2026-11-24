@@ -1,20 +1,29 @@
 #include "PostProcess.h"
+#include "PresetLists.h"
 
-#if USE_GLES
+#if defined(USE_GLES) || defined(USE_GLEW)
 
+#if defined(USE_GLES)
 #include <GLES3/gl3.h>
+#else
+#include <GL/glew.h>
+#endif
 
 #include <Poco/Logger.h>
-
 #include <algorithm>
-#include <cctype>
 #include <string>
 
 namespace
 {
-Poco::Logger& logger() { return Poco::Logger::get("PostProcess"); }
+Poco::Logger& Logger() { return Poco::Logger::get("PostProcess"); }
 
-const char* kVertexShader = R"(#version 310 es
+#if defined(USE_GLES)
+constexpr auto shaderVersion = "#version 300 es\nprecision highp float;\n";
+#else
+constexpr auto shaderVersion = "#version 330 core\n";
+#endif
+
+constexpr auto vertexShader = R"(
 out vec2 vUV;
 void main()
 {
@@ -24,284 +33,376 @@ void main()
 }
 )";
 
-const char* kFragmentShader = R"(#version 310 es
-precision highp float;
+constexpr auto fragmentShader = R"(
 uniform sampler2D uScene;
-uniform sampler2D uPrev;
-uniform float uPersistence;   // 0 = no smoothing, ->1 = heavy trails
-uniform float uBrightness;    // screen multiplier
-uniform float uTintEnabled;   // >0.5 = tint on
-uniform vec3  uTintColor;     // target hue
-uniform float uTintStrength;  // 0 = original, 1 = full monochrome
+uniform float uBrightness;
+uniform float uTintEnabled;
+uniform vec3 uTintColor;
+uniform float uTintStrength;
 in vec2 vUV;
-out vec4 frag;
+layout(location = 0) out vec4 outDisplay;
+#ifdef USE_HISTORY
+uniform sampler2D uPrev;
+uniform float uPersistence;
+layout(location = 1) out vec4 outSmoothed;
+#endif
+
 void main()
 {
-    vec3 scene    = texture(uScene, vUV).rgb;
-    vec3 prev     = texture(uPrev,  vUV).rgb;
-    vec3 smoothed = mix(scene, prev, uPersistence);   // temporal low-pass: dampens flashes + hue cycling
-    vec3 c        = smoothed * uBrightness;
+    vec3 smoothed = texture(uScene, vUV).rgb;
+#ifdef USE_HISTORY
+    if (uPersistence > 0.0)
+    {
+        smoothed = mix(smoothed, texture(uPrev, vUV).rgb, uPersistence);
+    }
+    outSmoothed = vec4(smoothed, 1.0);
+#endif
+    vec3 color = smoothed * uBrightness;
     if (uTintEnabled > 0.5)
     {
-        float lum  = dot(c, vec3(0.2126, 0.7152, 0.0722));
-        vec3  mono = lum * uTintColor;
-        c = mix(c, mono, uTintStrength);
+        float luminance = dot(color, vec3(0.2126, 0.7152, 0.0722));
+        color = mix(color, luminance * uTintColor, uTintStrength);
     }
-    frag = vec4(c, 1.0);
+    outDisplay = vec4(color, 1.0);
 }
 )";
 
-GLuint CompileShader(GLenum type, const char* src)
+GLuint CompileShader(GLenum type, const char* source, const char* defines)
 {
+    const char* sources[]{shaderVersion, defines, source};
     GLuint shader = glCreateShader(type);
-    glShaderSource(shader, 1, &src, nullptr);
+    glShaderSource(shader, 3, sources, nullptr);
     glCompileShader(shader);
-    GLint ok = GL_FALSE;
-    glGetShaderiv(shader, GL_COMPILE_STATUS, &ok);
-    if (!ok)
-    {
-        char log[512];
-        glGetShaderInfoLog(shader, sizeof(log), nullptr, log);
-        poco_error_f1(logger(), "Post-process shader compile failed: %s", std::string(log));
-        glDeleteShader(shader);
-        return 0;
-    }
-    return shader;
+    GLint ready;
+    glGetShaderiv(shader, GL_COMPILE_STATUS, &ready);
+    if (ready) { return shader; }
+
+    char log[512]{};
+    glGetShaderInfoLog(shader, sizeof(log), nullptr, log);
+    poco_error_f1(Logger(), "Post-process shader compile failed: %s", std::string(log));
+    glDeleteShader(shader);
+    return 0;
 }
-} // namespace
+
+void AllocateTexture(GLuint& texture, int width, int height)
+{
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+}
+}
 
 PostProcess::~PostProcess()
 {
-    Destroy();
+    DestroyTargets();
+    if (_vao) { glDeleteVertexArrays(1, &_vao); }
+    if (_direct.id) { glDeleteProgram(_direct.id); }
+    if (_smooth.id) { glDeleteProgram(_smooth.id); }
 }
 
-bool PostProcess::ParseHexColor(const std::string& hex, float& r, float& g, float& b)
+bool PostProcess::Program::Initialize(bool useHistory)
 {
-    std::string h = hex;
-    if (!h.empty() && h[0] == '#') { h = h.substr(1); }
-    if (h.size() != 6) { return false; }
-    for (char c : h)
+    const GLuint vertex = CompileShader(GL_VERTEX_SHADER, vertexShader, "");
+    const GLuint fragment = CompileShader(GL_FRAGMENT_SHADER, fragmentShader, useHistory ? "#define USE_HISTORY\n" : "");
+    if (vertex && fragment)
     {
-        if (!std::isxdigit(static_cast<unsigned char>(c))) { return false; }
+        id = glCreateProgram();
+        glAttachShader(id, vertex);
+        glAttachShader(id, fragment);
+        glLinkProgram(id);
+        GLint linked;
+        glGetProgramiv(id, GL_LINK_STATUS, &linked);
+        if (!linked)
+        {
+            char log[512]{};
+            glGetProgramInfoLog(id, sizeof(log), nullptr, log);
+            poco_error_f1(Logger(), "Post-process program link failed: %s", std::string(log));
+            glDeleteProgram(id);
+            id = 0;
+        }
     }
-    auto hexByte = [](const std::string& s) {
-        return static_cast<float>(std::stoi(s, nullptr, 16)) / 255.0f;
-    };
-    r = hexByte(h.substr(0, 2));
-    g = hexByte(h.substr(2, 2));
-    b = hexByte(h.substr(4, 2));
+    if (vertex) { glDeleteShader(vertex); }
+    if (fragment) { glDeleteShader(fragment); }
+    if (!id) { return false; }
+
+    glUseProgram(id);
+    glUniform1i(glGetUniformLocation(id, "uScene"), 0);
+    if (useHistory)
+    {
+        glUniform1i(glGetUniformLocation(id, "uPrev"), 1);
+        persistence = glGetUniformLocation(id, "uPersistence");
+    }
+    brightness = glGetUniformLocation(id, "uBrightness");
+    tintEnabled = glGetUniformLocation(id, "uTintEnabled");
+    tintColor = glGetUniformLocation(id, "uTintColor");
+    tintStrength = glGetUniformLocation(id, "uTintStrength");
+    glUseProgram(0);
     return true;
 }
 
-void PostProcess::SetReduceFlashing(bool enabled) { _reduceFlashing = enabled; }
+void PostProcess::SetReduceFlashing(bool enabled)
+{
+    if (_reduceFlashing != enabled) { _failed = false; }
+    if (_reduceFlashing && !enabled) { DestroyHistory(); }
+    _reduceFlashing = enabled;
+}
 
 void PostProcess::SetStrength(float strength)
 {
-    _strength = std::min(1.0f, std::max(0.0f, strength));
+    strength = std::clamp(strength, 0.0f, 1.0f);
+    if (_strength != strength) { _failed = false; }
+    _strength = strength;
 }
 
 void PostProcess::SetBrightness(float brightness)
 {
-    _brightness = std::min(1.0f, std::max(0.0f, brightness));
+    brightness = std::clamp(brightness, 0.0f, 1.0f);
+    if (_brightness != brightness) { _failed = false; }
+    _brightness = brightness;
 }
 
-void PostProcess::SetTint(bool enabled, const std::string& hexColor, float strength)
+void PostProcess::SetTint(bool enabled, std::string_view hexColor, float strength)
 {
+    float r = _tintR, g = _tintG, b = _tintB;
+    ParseHexColor(hexColor, r, g, b);
+    SetTint(enabled, r, g, b, strength);
+}
+
+void PostProcess::SetTint(bool enabled, float r, float g, float b, float strength)
+{
+    strength = std::clamp(strength, 0.0f, 1.0f);
+    if (_tintEnabled != enabled || _tintR != r || _tintG != g || _tintB != b || _tintStrength != strength)
+    {
+        _failed = false;
+    }
     _tintEnabled = enabled;
-    _tintStrength = std::min(1.0f, std::max(0.0f, strength));
-    float r, g, b;
-    if (ParseHexColor(hexColor, r, g, b)) { _tintR = r; _tintG = g; _tintB = b; }
+    _tintR = r;
+    _tintG = g;
+    _tintB = b;
+    _tintStrength = strength;
 }
 
 bool PostProcess::Active() const
 {
-    return _reduceFlashing || _brightness < 0.999f || _tintEnabled;
+    return !_failed && (_reduceFlashing || _brightness < 0.999f || _tintEnabled);
 }
 
-uint32_t PostProcess::SceneFbo() const
+uint32_t PostProcess::SceneFbo() const { return _begun ? _fbo : 0; }
+
+bool PostProcess::EnsureScene()
 {
-    return _fbo;
-}
+    if (_fbo) { return true; }
 
-void PostProcess::EnsureResources(int width, int height)
-{
-    if (_ready && width == _width && height == _height)
-    {
-        return;
-    }
-    Destroy();
-    _width = width;
-    _height = height;
-
-    glGenTextures(1, &_sceneTex);
-    glBindTexture(GL_TEXTURE_2D, _sceneTex);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-    glGenTextures(1, &_prevTex);
-    glBindTexture(GL_TEXTURE_2D, _prevTex);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
+    glActiveTexture(GL_TEXTURE0);
+    AllocateTexture(_sceneTex, _width, _height);
+    glBindTexture(GL_TEXTURE_2D, 0);
     glGenRenderbuffers(1, &_depthRb);
     glBindRenderbuffer(GL_RENDERBUFFER, _depthRb);
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, width, height);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, _width, _height);
+    glBindRenderbuffer(GL_RENDERBUFFER, 0);
 
     glGenFramebuffers(1, &_fbo);
     glBindFramebuffer(GL_FRAMEBUFFER, _fbo);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, _sceneTex, 0);
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, _depthRb);
-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-    {
-        poco_error(logger(), "Post-process framebuffer incomplete; disabling.");
-        Destroy();
-        _reduceFlashing = false;
-        _brightness = 1.0f;
-        _tintEnabled = false;
-        return;
-    }
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    return glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
+}
 
-    if (_program == 0)
+bool PostProcess::EnsureHistory()
+{
+    if (_displayTex) { return true; }
+    glActiveTexture(GL_TEXTURE0);
+    AllocateTexture(_displayTex, _width, _height);
+    glGenFramebuffers(2, _compositeFbo);
+    constexpr GLenum buffers[]{GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
+    for (unsigned int i = 0; i < 2; ++i)
     {
-        GLuint vs = CompileShader(GL_VERTEX_SHADER, kVertexShader);
-        GLuint fs = CompileShader(GL_FRAGMENT_SHADER, kFragmentShader);
-        if (vs && fs)
-        {
-            _program = glCreateProgram();
-            glAttachShader(_program, vs);
-            glAttachShader(_program, fs);
-            glLinkProgram(_program);
-            GLint ok = GL_FALSE;
-            glGetProgramiv(_program, GL_LINK_STATUS, &ok);
-            if (!ok)
-            {
-                poco_error(logger(), "Post-process program link failed; disabling.");
-                glDeleteProgram(_program);
-                _program = 0;
-            }
-            else
-            {
-                glUseProgram(_program);
-                glUniform1i(glGetUniformLocation(_program, "uScene"), 0);
-                glUniform1i(glGetUniformLocation(_program, "uPrev"), 1);
-                _uPersistence = glGetUniformLocation(_program, "uPersistence");
-                _uBrightness = glGetUniformLocation(_program, "uBrightness");
-                _uTintEnabled = glGetUniformLocation(_program, "uTintEnabled");
-                _uTintColor = glGetUniformLocation(_program, "uTintColor");
-                _uTintStrength = glGetUniformLocation(_program, "uTintStrength");
-                glUseProgram(0);
-            }
-        }
-        if (vs) { glDeleteShader(vs); }
-        if (fs) { glDeleteShader(fs); }
-        if (_program == 0)
-        {
-            Destroy();
-            _reduceFlashing = false;
-            _brightness = 1.0f;
-            _tintEnabled = false;
-            return;
-        }
+        AllocateTexture(_historyTex[i], _width, _height);
+        glBindFramebuffer(GL_FRAMEBUFFER, _compositeFbo[i]);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, _displayTex, 0);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, _historyTex[i], 0);
+        glDrawBuffers(2, buffers);
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) { return false; }
     }
-
-    if (_vao == 0)
-    {
-        glGenVertexArrays(1, &_vao);
-    }
-
-    _ready = true;
+    glBindTexture(GL_TEXTURE_2D, 0);
+    return true;
 }
 
 void PostProcess::Begin(int width, int height)
 {
-    if (!Active() || width <= 0 || height <= 0)
+    _begun = false;
+    if (width != _width || height != _height)
     {
+        DestroyTargets();
+        _width = width;
+        _height = height;
+        _failed = false;
+    }
+    if (!Active() || width <= 0 || height <= 0) { return; }
+
+    auto& program = _reduceFlashing ? _smooth : _direct;
+    if ((!program.id && !program.Initialize(_reduceFlashing)) || !EnsureScene() ||
+        (_reduceFlashing && !EnsureHistory()))
+    {
+        poco_error(Logger(), "Post-process setup failed. Rendering directly to the backbuffer.");
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        DestroyTargets();
+        _failed = true;
         return;
     }
-    EnsureResources(width, height);
-    if (!_ready)
-    {
-        return;
-    }
+    if (!_vao) { glGenVertexArrays(1, &_vao); }
     glBindFramebuffer(GL_FRAMEBUFFER, _fbo);
     glViewport(0, 0, _width, _height);
+    _begun = true;
 }
 
 void PostProcess::Composite()
 {
-    if (!Active() || !_ready)
-    {
-        return;
-    }
+    if (!_begun) { return; }
+    _begun = false;
 
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    const unsigned int writeIdx = _historyIdx ^ 1;
+    const auto& program = _reduceFlashing ? _smooth : _direct;
+    glBindFramebuffer(GL_FRAMEBUFFER, _reduceFlashing ? _compositeFbo[writeIdx] : 0);
     glViewport(0, 0, _width, _height);
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_BLEND);
+    glDisable(GL_SCISSOR_TEST);
+    glDisable(GL_CULL_FACE);
+    glDisable(GL_STENCIL_TEST);
 
-    glUseProgram(_program);
-    // Persistence only applies when "reduce flashing" is on. k in [0, 0.9].
-    float persistence = _reduceFlashing ? (0.9f * _strength) : 0.0f;
-    glUniform1f(_uPersistence, persistence);
-    glUniform1f(_uBrightness, _brightness);
-    glUniform1f(_uTintEnabled, _tintEnabled ? 1.0f : 0.0f);
-    glUniform3f(_uTintColor, _tintR, _tintG, _tintB);
-    glUniform1f(_uTintStrength, _tintStrength);
+    glUseProgram(program.id);
+    glUniform1f(program.brightness, _brightness);
+    glUniform1f(program.tintEnabled, _tintEnabled ? 1.0f : 0.0f);
+    glUniform3f(program.tintColor, _tintR, _tintG, _tintB);
+    glUniform1f(program.tintStrength, _tintStrength);
+    if (_reduceFlashing)
+    {
+        glUniform1f(program.persistence, _hasHistory ? 0.9f * _strength : 0.0f);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, _hasHistory ? _historyTex[_historyIdx] : _sceneTex);
+    }
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, _sceneTex);
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, _prevTex);
-
     glBindVertexArray(_vao);
     glDrawArrays(GL_TRIANGLES, 0, 3);
     glBindVertexArray(0);
-
-    // Store the displayed frame as "previous" for next frame's persistence term.
-    // (Persistence is computed in displayed space; at the default brightness=1 / tint-off this is
-    // an exact EMA of the scene. Tint preserves luminance so tinted trails are correct; dimming
-    // only darkens trails slightly — cosmetically fine.)
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, _prevTex);
-    glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, _width, _height);
     glBindTexture(GL_TEXTURE_2D, 0);
-
     glUseProgram(0);
+
+    if (_reduceFlashing)
+    {
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glActiveTexture(GL_TEXTURE0);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, _compositeFbo[writeIdx]);
+        glReadBuffer(GL_COLOR_ATTACHMENT0);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+        glBlitFramebuffer(0, 0, _width, _height, 0, 0, _width, _height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+        _historyIdx = writeIdx;
+        _hasHistory = true;
+    }
 }
 
-void PostProcess::Destroy()
+bool PostProcess::CapturePreview(int width, int height, std::vector<uint8_t>& outBmp)
 {
+    if (width <= 0 || height <= 0) { return false; }
+
+    _previewRgba.resize(kPreviewWidth * kPreviewHeight * 4);
+    if (!_previewFbo)
+    {
+        GLint textureBinding = 0;
+        glGetIntegerv(GL_TEXTURE_BINDING_2D, &textureBinding);
+        glGenTextures(1, &_previewTex);
+        glBindTexture(GL_TEXTURE_2D, _previewTex);
+        if (_previewTex)
+        {
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, kPreviewWidth, kPreviewHeight, 0,
+                         GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        }
+        glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(textureBinding));
+
+        glGenFramebuffers(1, &_previewFbo);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, _previewFbo);
+        if (_previewFbo && _previewTex)
+        {
+            glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, _previewTex, 0);
+        }
+        if (!_previewFbo || !_previewTex || glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        {
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glDeleteFramebuffers(1, &_previewFbo);
+            glDeleteTextures(1, &_previewTex);
+            _previewFbo = 0;
+            _previewTex = 0;
+            return false;
+        }
+    }
+
+    const GLboolean scissorEnabled = glIsEnabled(GL_SCISSOR_TEST);
+    if (scissorEnabled) { glDisable(GL_SCISSOR_TEST); }
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, _previewFbo);
+    glBlitFramebuffer(0, 0, width, height, 0, 0, kPreviewWidth, kPreviewHeight, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+    if (scissorEnabled) { glEnable(GL_SCISSOR_TEST); }
+
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, _previewFbo);
+    GLint packAlignment = 0;
+    glGetIntegerv(GL_PACK_ALIGNMENT, &packAlignment);
+    glPixelStorei(GL_PACK_ALIGNMENT, 4);
+    glReadPixels(0, 0, kPreviewWidth, kPreviewHeight, GL_RGBA, GL_UNSIGNED_BYTE, _previewRgba.data());
+    glPixelStorei(GL_PACK_ALIGNMENT, packAlignment);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    return PresetLists::EncodeBmp24FromRgba(kPreviewWidth, kPreviewHeight, _previewRgba.data(),
+                                           _previewRgba.size(), outBmp);
+}
+
+void PostProcess::DestroyHistory()
+{
+    if (_displayTex)
+    {
+        glDeleteFramebuffers(2, _compositeFbo);
+        glDeleteTextures(2, _historyTex);
+        glDeleteTextures(1, &_displayTex);
+        _displayTex = 0;
+    }
+    _historyIdx = 0;
+    _hasHistory = false;
+}
+
+void PostProcess::DestroyTargets()
+{
+    DestroyHistory();
+    if (_previewFbo) { glDeleteFramebuffers(1, &_previewFbo); _previewFbo = 0; }
+    if (_previewTex) { glDeleteTextures(1, &_previewTex); _previewTex = 0; }
     if (_fbo) { glDeleteFramebuffers(1, &_fbo); _fbo = 0; }
     if (_sceneTex) { glDeleteTextures(1, &_sceneTex); _sceneTex = 0; }
-    if (_prevTex) { glDeleteTextures(1, &_prevTex); _prevTex = 0; }
     if (_depthRb) { glDeleteRenderbuffers(1, &_depthRb); _depthRb = 0; }
-    if (_vao) { glDeleteVertexArrays(1, &_vao); _vao = 0; }
-    if (_program) { glDeleteProgram(_program); _program = 0; }
-    _ready = false;
-    _width = 0;
-    _height = 0;
 }
 
-#else // !USE_GLES — no-op stub for desktop builds
+#else
 
-PostProcess::~PostProcess() {}
-bool PostProcess::ParseHexColor(const std::string&, float&, float&, float&) { return false; }
+PostProcess::~PostProcess() = default;
 void PostProcess::SetReduceFlashing(bool) {}
 void PostProcess::SetStrength(float) {}
 void PostProcess::SetBrightness(float) {}
-void PostProcess::SetTint(bool, const std::string&, float) {}
+void PostProcess::SetTint(bool, std::string_view, float) {}
+void PostProcess::SetTint(bool, float, float, float, float) {}
 bool PostProcess::Active() const { return false; }
 void PostProcess::Begin(int, int) {}
 uint32_t PostProcess::SceneFbo() const { return 0; }
 void PostProcess::Composite() {}
-void PostProcess::EnsureResources(int, int) {}
-void PostProcess::Destroy() {}
+bool PostProcess::CapturePreview(int, int, std::vector<uint8_t>&) { return false; }
 
 #endif
+
+bool PostProcess::ParseHexColor(std::string_view hex, float& r, float& g, float& b)
+{
+    return PresetLists::ParseHexColor(hex, r, g, b);
+}

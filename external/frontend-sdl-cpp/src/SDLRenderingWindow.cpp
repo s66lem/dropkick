@@ -351,7 +351,15 @@ void SDLRenderingWindow::CreateSDLWindow()
     UpdateSwapInterval();
 
 #ifdef USE_GLEW
+    glewExperimental = GL_TRUE;
     auto glewError = glewInit();
+#ifdef GLEW_ERROR_NO_GLX_DISPLAY
+    if (glewError == GLEW_ERROR_NO_GLX_DISPLAY)
+    {
+        poco_debug(_logger, "GLEW loaded core OpenGL functions without a GLX display.");
+        glewError = GLEW_OK;
+    }
+#endif
     if (glewError != GLEW_OK)
     {
         auto errorMessage = "Could not initialize GLEW. Error: " + std::string(reinterpret_cast<const char*>(glewGetErrorString(glewError)));
