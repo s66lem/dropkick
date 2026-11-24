@@ -111,8 +111,8 @@ function applyTheme(t) {
   if (t === "light") document.documentElement.dataset.theme = "light";
   else delete document.documentElement.dataset.theme;
   $("theme").setAttribute("aria-label", t === "light" ? "Switch to dark theme" : "Switch to light theme");
-  document.querySelector('meta[name="theme-color"]').content = t === "light" ? "#f4f2ee" : "#100f0e";
-  if (previewReady) renderLastFrame();
+  document.querySelector('meta[name="theme-color"]').content = t === "light" ? "#eef0f4" : "#070709";
+  if (previewReady) { renderBgDither(performance.now()); renderLastFrame(); }
 }
 applyTheme(store("local", "dk-theme") === "light" ? "light" : "dark");
 $("theme").onclick = () => {
@@ -430,6 +430,262 @@ function splitName(name) {
   const k = name.indexOf(" - ");
   return k > 0 ? { author: name.slice(0, k).trim(), title: name.slice(k + 3).trim() || name } : { author: "", title: name };
 }
+
+/* ---------- ordered fine pixel-dithered background shader ("Titanium Lumen") ----------
+ * Fine ~2.25 CSS px Ordered Bayer 8x8 refracted acoustic caustic net inside a brushed-titanium
+ * waveguide vault, keeping a calm reading sanctuary down the center column.
+ * Runs in WebGL 1.0 at ~20 fps, pausing automatically when hidden or under reduced motion. */
+const bgCanvas = $("bgDither");
+const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+let bgRaf = 0, bgLast = 0;
+
+const BG_VERT = `attribute vec2 aPos; void main() { gl_Position = vec4(aPos, 0.0, 1.0); }`;
+const BG_FRAG = `
+// Titanium Lumen: refracted acoustic caustic net inside a brushed-titanium waveguide vault
+// Palette: obsidian / graphite / titanium / platinum with sapphire depth and ice filaments (light: pearl / silver / graphite)
+precision highp float;
+
+uniform vec2 uRes;
+uniform float uTime;
+uniform float uLight;
+uniform float uDpr;
+
+float bayer2(vec2 p2) {
+  vec2 m2 = mod(floor(p2), 2.0);
+  return 2.0 * abs(m2.x - m2.y) + m2.y;
+}
+
+float bayer8(vec2 p8) {
+  vec2 q8 = mod(floor(p8), 8.0);
+  float b0 = bayer2(q8);
+  float b1 = bayer2(floor(q8 * 0.5));
+  float b2 = bayer2(floor(q8 * 0.25));
+  return (16.0 * b0 + 4.0 * b1 + b2 + 0.5) / 64.0;
+}
+
+vec2 fluidWarp(vec2 pw, float tw) {
+  vec2 w = vec2(0.0);
+  w.x += sin(pw.y * 2.3 + tw * 0.88) * 0.54 + cos((pw.x * 1.7 - pw.y * 1.4) + tw * 0.63) * 0.46;
+  w.y += cos(pw.x * 2.1 - tw * 0.76) * 0.54 + sin((pw.x * 1.5 + pw.y * 1.8) - tw * 0.57) * 0.46;
+  vec2 rw = mat2(0.7660, -0.6428, 0.6428, 0.7660) * pw * 1.92;
+  w.x += sin(rw.y * 2.4 - tw * 1.12 + 1.7) * 0.28;
+  w.y += cos(rw.x * 2.2 + tw * 1.02 + 0.9) * 0.28;
+  return w;
+}
+
+vec3 ramp5(vec3 c0, vec3 c1, vec3 c2, vec3 c3, vec3 c4, float tr) {
+  float sr = clamp(tr, 0.0, 1.0) * 4.0;
+  vec3 acc = mix(c0, c1, clamp(sr, 0.0, 1.0));
+  acc = mix(acc, c2, clamp(sr - 1.0, 0.0, 1.0));
+  acc = mix(acc, c3, clamp(sr - 2.0, 0.0, 1.0));
+  return mix(acc, c4, clamp(sr - 3.0, 0.0, 1.0));
+}
+
+float quantizeDither(float val, float steps, float thresh) {
+  float scaled = clamp(val, 0.0, 0.9999) * steps;
+  float idx = floor(scaled);
+  return clamp((idx + step(thresh, scaled - idx)) / steps, 0.0, 1.0);
+}
+
+// Three-source standing wave. x: thin caustic filaments at nodal lines, y: soft antinode body.
+vec2 causticField(vec2 pc, vec2 sa, vec2 sb, vec2 sc, float tc) {
+  float da = length(pc - sa);
+  float db = length(pc - sb);
+  float dc = length(pc - sc);
+  float sumW = sin(da * 11.2 - tc * 1.40) * 0.40
+             + sin(db * 10.3 - tc * 1.22 + 1.30) * 0.40
+             + cos(dc * 8.6 - tc * 0.98 + 0.60) * 0.30;
+  float filament = exp(-sumW * sumW * 30.0);
+  float bodyW = clamp(0.5 + 0.5 * sumW, 0.0, 1.0);
+  return vec2(filament, bodyW * bodyW * sqrt(bodyW));
+}
+
+void main() {
+  float dpr = uDpr > 0.01 ? clamp(uDpr, 0.75, 4.0) : 1.0;
+  float pxSize = max(2.0, floor(2.25 * dpr + 0.5));
+  vec2 cell = floor(gl_FragCoord.xy / pxSize);
+  vec2 samplePos = (cell + 0.5) * pxSize;
+
+  vec2 safeRes = max(uRes, vec2(1.0));
+  vec2 uv = samplePos / safeRes;
+  float sx = uv.x - 0.5;
+  float sy = uv.y - 0.5;
+
+  float rawAspect = safeRes.x / safeRes.y;
+  float aspect = clamp(rawAspect, 0.68, 1.75);
+  float portrait = smoothstep(1.0, 0.62, rawAspect);
+  vec2 q = vec2(sx * aspect, sy);
+  float xSpan = mix(sx * 1.55, q.x, 0.5);
+
+  float t = uTime * 0.10;
+  vec2 warp = fluidWarp(q, t);
+  vec2 qw = q + 0.07 * warp;
+
+  // Resonators sit on the flanks; on portrait they stagger vertically so the narrow sides still get structure.
+  float latScale = mix(1.0, aspect, 0.55);
+  vec2 resL = vec2(-0.80 * latScale + 0.05 * sin(t * 0.73), mix(-0.04, 0.20, portrait) + 0.08 * cos(t * 0.59));
+  vec2 resR = vec2( 0.80 * latScale + 0.05 * cos(t * 0.69), mix(0.04, -0.20, portrait) + 0.08 * sin(t * 0.63));
+  vec2 resT = vec2( 0.10 * sin(t * 0.47), 0.64 + 0.05 * cos(t * 0.53));
+
+  // Front caustic plane plus a slower, magnified depth plane seen "through" it (parallax refraction).
+  vec2 cFront = causticField(qw, resL, resR, resT, t);
+  vec2 qDeep = q * 0.84 + 0.12 * warp.yx + vec2(0.0, 0.03 * sin(t * 0.41));
+  vec2 cDeep = causticField(qDeep, resL * 1.08, resR * 1.08, resT * 0.94, t * 0.70 + 2.1);
+
+  float edgeFrame = smoothstep(0.16, 0.54, length(vec2(sx * mix(1.35, 1.10, portrait), sy * mix(1.05, 1.25, portrait))));
+
+  // Lower waveguide: thin primary rim with a refracted inner echo; bed is dimmed under the control dock.
+  float bowlCurve = -0.40 + 0.44 * xSpan * xSpan + 0.032 * warp.y + 0.020 * sin(q.x * 3.8 + t * 1.15);
+  float dBowl = sy - bowlCurve;
+  float bowlRim = exp(-dBowl * dBowl * 140.0);
+  float bowlEcho = exp(-(dBowl + 0.048) * (dBowl + 0.048) * 220.0) * 0.50;
+  float bowlBed = smoothstep(0.03, -0.18, dBowl) * (0.20 + 0.10 * cos(qw.x * 4.4 - t * 0.82));
+  float dockCalm = 1.0 - 0.60 * exp(-sx * sx * 11.0) * smoothstep(-0.08, -0.38, sy);
+  float hearth = (bowlRim * 0.82 + bowlEcho + bowlBed) * dockCalm;
+
+  // Upper vault: matching thin arch and echo with a restrained canopy on the shoulders.
+  float vaultArch = 0.43 - 0.34 * xSpan * xSpan + 0.030 * warp.y - 0.020 * cos(q.x * 3.4 - t * 0.95);
+  float dVault = sy - vaultArch;
+  float vaultRim = exp(-dVault * dVault * 120.0) * 0.72;
+  float vaultEcho = exp(-(dVault - 0.042) * (dVault - 0.042) * 200.0) * 0.36;
+  float vaultCanopy = smoothstep(-0.04, 0.20, dVault) * 0.34;
+  float shoulderMask = 0.42 + 0.58 * smoothstep(0.08, 0.42, abs(sx));
+  float vault = (vaultRim + vaultEcho + vaultCanopy) * shoulderMask;
+
+  float causticEnergy = cFront.x * 0.40 * edgeFrame
+                      + cFront.y * 0.30 * (0.12 + 0.68 * edgeFrame)
+                      + (cDeep.y * 0.18 + cDeep.x * 0.12) * edgeFrame;
+  float combined = max(hearth * 0.86, vault * 0.74) + 0.36 * min(hearth, vault) + causticEnergy * (0.75 + 0.25 * hearth);
+  float shaped = 1.0 - exp(-combined * 1.32);
+
+  vec2 wellPos = vec2(sx / mix(0.30, 0.34, portrait), (sy - 0.02) / mix(0.34, 0.38, portrait));
+  float sanctuary = 1.0 - 0.72 * exp(-dot(wellPos, wellPos) * 1.5);
+  float cornerContain = 1.0 - 0.18 * smoothstep(0.58, 0.95, length(vec2(sx, sy) * 1.4));
+  float level = clamp(shaped * sanctuary * cornerContain, 0.0, 1.0);
+
+  // Tint weights: sapphire pools in the depth plane and bowl bed; ice rides the filaments and rims.
+  float phaseTint = 0.5 + 0.5 * sin(q.x * 2.4 - q.y * 1.6 + t * 0.5 + warp.x * 1.2);
+  float sapphWeight = clamp(
+    cDeep.y * 0.80 * edgeFrame + smoothstep(0.10, -0.40, sy) * 0.30 + bowlBed * 0.60 + vaultCanopy * 0.50 + 0.25 * phaseTint - bowlRim * 0.30,
+    0.0,
+    1.0
+  );
+  float iceWeight = clamp(cFront.x * edgeFrame * 1.40 + bowlRim * 0.55 + vaultRim * 0.60 + bowlEcho * 0.40, 0.0, 1.0);
+
+  float bMain = bayer8(cell);
+  float bSapph = bayer8(cell.yx + vec2(5.0, 3.0));
+  float bIce = bayer8(vec2(7.0 - mod(cell.x, 8.0), cell.y) + vec2(2.0, 6.0));
+
+  float levelScale = uLight > 0.5 ? 0.90 : 1.0;
+  float qLevel = quantizeDither(level * levelScale, 4.0, bMain);
+  float qSapph = quantizeDither(sapphWeight, 3.0, bSapph);
+  float qIce = quantizeDither(iceWeight, 3.0, bIce);
+
+  vec3 col;
+  if (uLight > 0.5) {
+    vec3 basePearl = vec3(0.952, 0.956, 0.962);
+    vec3 titanLight = ramp5(basePearl,
+      vec3(0.918, 0.922, 0.930), vec3(0.846, 0.852, 0.866), vec3(0.722, 0.732, 0.754), vec3(0.548, 0.560, 0.588), qLevel);
+    vec3 sapphLight = ramp5(basePearl,
+      vec3(0.910, 0.922, 0.948), vec3(0.830, 0.852, 0.908), vec3(0.694, 0.736, 0.836), vec3(0.508, 0.572, 0.722), qLevel);
+    vec3 iceLight = ramp5(basePearl,
+      vec3(0.920, 0.938, 0.946), vec3(0.842, 0.880, 0.896), vec3(0.704, 0.776, 0.806), vec3(0.528, 0.628, 0.672), qLevel);
+    col = mix(titanLight, sapphLight, qSapph * 0.85);
+    col = mix(col, iceLight, qIce * 0.80);
+  } else {
+    vec3 baseObsidian = vec3(0.027, 0.031, 0.039);
+    vec3 titanDark = ramp5(baseObsidian,
+      vec3(0.062, 0.068, 0.080), vec3(0.138, 0.148, 0.168), vec3(0.305, 0.320, 0.350), vec3(0.650, 0.668, 0.698), qLevel);
+    vec3 sapphDark = ramp5(baseObsidian,
+      vec3(0.050, 0.064, 0.102), vec3(0.092, 0.132, 0.218), vec3(0.184, 0.272, 0.444), vec3(0.430, 0.548, 0.770), qLevel);
+    vec3 iceDark = ramp5(baseObsidian,
+      vec3(0.058, 0.074, 0.090), vec3(0.122, 0.172, 0.202), vec3(0.302, 0.420, 0.472), vec3(0.770, 0.866, 0.906), qLevel);
+    col = mix(titanDark, sapphDark, qSapph * 0.85);
+    col = mix(col, iceDark, qIce * 0.80);
+  }
+
+  gl_FragColor = vec4(col, 1.0);
+}
+`;
+
+let bgGl = null, bgProg = null, bgU = null;
+function initBgGl() {
+  const gl = bgCanvas.getContext("webgl", { alpha: false, antialias: false, depth: false, preserveDrawingBuffer: false });
+  if (!gl) return false;
+  const compile = (type, src) => {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) { gl.deleteShader(s); return null; }
+    return s;
+  };
+  const vs = compile(gl.VERTEX_SHADER, BG_VERT);
+  const fs = compile(gl.FRAGMENT_SHADER, BG_FRAG);
+  if (!vs || !fs) return false;
+  const p = gl.createProgram();
+  gl.attachShader(p, vs); gl.attachShader(p, fs); gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) return false;
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+  const loc = gl.getAttribLocation(p, "aPos");
+  gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+  bgGl = gl; bgProg = p;
+  bgU = {
+    res: gl.getUniformLocation(p, "uRes"),
+    time: gl.getUniformLocation(p, "uTime"),
+    light: gl.getUniformLocation(p, "uLight"),
+    dpr: gl.getUniformLocation(p, "uDpr"),
+  };
+  return true;
+}
+initBgGl();
+
+function sizeBgDither() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.max(1, Math.round(innerWidth * dpr));
+  const h = Math.max(1, Math.round(innerHeight * dpr));
+  if (bgCanvas.width !== w || bgCanvas.height !== h) {
+    bgCanvas.width = w;
+    bgCanvas.height = h;
+    if (bgGl) bgGl.viewport(0, 0, w, h);
+  }
+}
+
+function renderBgDither(nowMs) {
+  sizeBgDither();
+  const light = document.documentElement.dataset.theme === "light";
+  if (bgGl && bgProg) {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    bgGl.useProgram(bgProg);
+    bgGl.uniform2f(bgU.res, bgCanvas.width, bgCanvas.height);
+    bgGl.uniform1f(bgU.time, (nowMs || 0) * 0.001);
+    bgGl.uniform1f(bgU.light, light ? 1.0 : 0.0);
+    bgGl.uniform1f(bgU.dpr, dpr);
+    bgGl.drawArrays(bgGl.TRIANGLES, 0, 3);
+    return;
+  }
+  bgCanvas.style.display = "none";
+}
+
+function bgTick(now) {
+  bgRaf = 0;
+  if (document.hidden || reducedMotion.matches) return;
+  if (now - bgLast >= 48) { // smooth ~20 fps ambient motion, ultra-low GPU/battery draw
+    bgLast = now;
+    renderBgDither(now);
+  }
+  bgRaf = requestAnimationFrame(bgTick);
+}
+
+function startBgDither() {
+  cancelAnimationFrame(bgRaf);
+  renderBgDither(performance.now());
+  if (!reducedMotion.matches && !document.hidden) bgRaf = requestAnimationFrame(bgTick);
+}
+addEventListener("resize", () => renderBgDither(performance.now()));
+document.addEventListener("visibilitychange", () => { if (!document.hidden) startBgDither(); });
 
 /* ---------- live visualizer preview ----------
  * Polls GET /api/preview (240x150 full-color BMP from the live OpenGL framebuffer) while Now
@@ -963,6 +1219,7 @@ document.addEventListener("visibilitychange", () => {
 let polling = false;
 async function boot() {
   previewReady = true;
+  startBgDither();
   drawStandby("Waiting for display\u2026", false);
   await Promise.all([loadFavorites(), loadPacks()]); // packPrefix() uses the pack names
   await loadPresets();
