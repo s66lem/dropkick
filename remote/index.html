@@ -2,171 +2,391 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<!-- The page URL may carry the access token as its path — never leak it via Referer. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- The page URL may carry the access token as its path; never leak it via Referer. -->
 <meta name="referrer" content="no-referrer">
-<title>Dropkick</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0f0e0d">
+<title>Dropkick Remote</title>
+<link rel="icon" type="image/svg+xml" href="icon.svg">
 <link rel="stylesheet" href="style.css">
+<script>try { if (localStorage.getItem("dk-theme") === "light") document.documentElement.dataset.theme = "light"; } catch (e) {}</script>
 </head>
 <body>
-<div class="app">
-  <div class="top">
-    <div class="brand">Dropkick</div>
-    <div class="topr">
-      <button id="theme" class="theme" aria-label="Toggle dark mode">◐</button>
-      <div class="src" id="audioSrc">—</div>
+
+<!-- Icon set: 24px grid, 1.75 stroke, round caps/joins. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-now" viewBox="0 0 24 24"><path d="M3 12h3l3-7 4 14 3-7h5"/></symbol>
+    <symbol id="i-browse" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.3 5.9.9-4.25 4.1 1 5.8L12 16.9l-5.25 2.7 1-5.8L3.5 9.7l5.9-.9z"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6L6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4L6 18M18 6l1.4-1.4"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></symbol>
+    <symbol id="i-prev" viewBox="0 0 24 24"><path d="M18 5.5v13L8.5 12z" fill="currentColor" stroke="none"/><path d="M6.5 6v12" stroke-width="2.1"/></symbol>
+    <symbol id="i-next" viewBox="0 0 24 24"><path d="M6 5.5v13l9.5-6.5z" fill="currentColor" stroke="none"/><path d="M17.5 6v12" stroke-width="2.1"/></symbol>
+    <symbol id="i-random" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3.5"/><path d="M8.5 8.5h.01M15.5 8.5h.01M12 12h.01M8.5 15.5h.01M15.5 15.5h.01" stroke-width="2.6"/></symbol>
+    <symbol id="i-shuffle" viewBox="0 0 24 24"><path d="M3 7h3.5c2 0 3.2 1 4.3 2.6l2.4 4.8C14.3 16 15.5 17 17.5 17H21M3 17h3.5c1.4 0 2.4-.5 3.3-1.4M14.2 8.4c.9-.9 1.9-1.4 3.3-1.4H21M18 4l3 3-3 3M18 14l3 3-3 3"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9.5" rx="2.5"/><path d="M8.5 11V8a3.5 3.5 0 0 1 7 0v3"/></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24"><path d="M9 7.5L4.5 12 9 16.5M15 7.5l4.5 4.5-4.5 4.5M13.2 5l-2.4 14"/></symbol>
+    <symbol id="i-dislike" viewBox="0 0 24 24"><path d="M10 14.5V19a2.5 2.5 0 0 0 2.5 2.5L16 14V3H6.8a2 2 0 0 0-2 1.7l-1.2 7.5a2 2 0 0 0 2 2.3zM16 3h2.5A1.5 1.5 0 0 1 20 4.5v8a1.5 1.5 0 0 1-1.5 1.5H16"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M9.5 6l6 6-6 6"/></symbol>
+    <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="M6 9.5l6 6 6-6"/></symbol>
+    <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.5"/><path d="M12 2.5V5M12 19v2.5M2.5 12H5M19 12h2.5"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5"/></symbol>
+    <symbol id="i-audio" viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4zM16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5M12 16.2h.01"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M14.5 8.5l2 2"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 3L5 13.5h6L10 21l9-11h-6z"/></symbol>
+    <symbol id="i-save" viewBox="0 0 24 24"><path d="M5 5a2 2 0 0 1 2-2h9l3 3v13a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2zM8.5 3v5h6V3M8.5 21v-6h7v6"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 5v14l11-7z"/></symbol>
+  </defs>
+</svg>
+
+<header class="topbar">
+  <div class="brand">
+    <img src="icon.svg" alt="" width="24" height="24">
+    <span class="wordmark">Dropkick</span>
+  </div>
+
+  <nav class="tabs" aria-label="Sections">
+    <button type="button" class="tab" data-tab="now" aria-current="page"><svg class="ic"><use href="#i-now"/></svg><span>Now</span></button>
+    <button type="button" class="tab" data-tab="browse"><svg class="ic"><use href="#i-browse"/></svg><span>Browse</span></button>
+    <button type="button" class="tab" data-tab="fav"><svg class="ic"><use href="#i-star"/></svg><span>Favorites</span></button>
+    <button type="button" class="tab" data-tab="set"><svg class="ic"><use href="#i-settings"/></svg><span>Settings</span></button>
+  </nav>
+
+  <div class="top-actions">
+    <button type="button" class="status-pill" id="statusPill" aria-expanded="false" aria-controls="telePop" aria-label="System status">
+      <span class="conn" id="conn" data-state="retry"><span class="dot"></span></span>
+      <span class="num" id="pillText">--</span>
+    </button>
+    <div class="telepop" id="telePop" role="group" aria-label="System monitor" hidden>
+      <dl class="tele">
+        <div><dt>FPS</dt><dd class="num" id="mFps">--</dd></div>
+        <div><dt>CPU</dt><dd class="num"><span id="mCpu">--</span>%</dd></div>
+        <div><dt>Memory</dt><dd class="num" id="mMem">--</dd></div>
+        <div id="mTempWrap"><dt>Temp</dt><dd class="num"><span id="mTemp">--</span>&deg;C</dd></div>
+        <div><dt>Connection</dt><dd id="connText" role="status">Connecting</dd></div>
+      </dl>
     </div>
+    <button type="button" class="iconbtn" id="theme" aria-label="Switch to light theme">
+      <svg class="ic sun"><use href="#i-sun"/></svg><svg class="ic moon"><use href="#i-moon"/></svg>
+    </button>
   </div>
+</header>
 
-  <div class="stats" id="stats" aria-label="System monitor">
-    <span><b id="stFps">–</b> fps</span>
-    <span><b id="stCpu">–</b>% cpu</span>
-    <span><b id="stMem">–</b> mem</span>
-    <span><b id="stTemp">–</b>° temp</span>
-  </div>
+<main class="main">
 
-  <!-- NOW -->
-  <section class="view on" data-view="now">
-    <div class="panel">
-      <div class="phead"><span class="n" id="nowLabel">NOW PLAYING</span><span class="n" id="pos">— / —</span></div>
-      <div class="screen" id="screen">
-        <div class="shead">
-          <div class="idx" id="posIdx">▸ POS —</div>
-          <button class="dislike" id="btnDislike" title="Dislike — stop playing this" aria-label="Dislike this preset — stop playing it"><svg viewBox="0 0 24 24"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/></svg></button>
+  <!-- NOW PLAYING: a page on mobile, a persistent dock beside the workspace on desktop -->
+  <section class="view" data-view="now" aria-label="Now playing">
+    <div class="now-shell">
+      <article class="stage">
+        <div class="plate" id="plateBox">
+          <canvas id="stageCanvas" width="480" height="300" aria-hidden="true"></canvas>
+          <div class="plate-meta">
+            <span class="status-flag" id="nowLabel"><span class="pill-dot"></span><span id="nowLabelText">Now playing</span></span>
+            <span class="scope-flag" id="scopeChip" hidden><svg class="ic"><use href="#i-shuffle"/></svg><span id="scopeText"></span></span>
+            <span class="pos num" id="pos">-- / --</span>
+          </div>
+          <div class="plate-off" id="plateOff" hidden>
+            <span class="plate-off-msg" id="plateOffMsg">Live preview off</span>
+            <button type="button" class="btn btn-sm" id="btnEnablePreview">Enable preview</button>
+          </div>
         </div>
-        <div class="pname" id="pname">—</div>
-        <div class="ppath" id="ppath"></div>
-        <span class="cat" id="pcat">—</span>
-      </div>
-      <div class="pad">
-        <button class="key" id="btnPrev"><svg viewBox="0 0 24 24"><path d="M18 6v12L9 12zM7 6v12"/></svg><span class="k">Prev</span></button>
-        <button class="key accent" id="btnNext"><svg viewBox="0 0 24 24"><path d="M6 6l12 6-12 6z"/></svg><span class="k">Next</span></button>
-        <button class="key accent" id="btnRandom"><svg viewBox="0 0 24 24"><path d="M4 7h4l8 10h4M14 7h6M4 17h4l3-4"/></svg><span class="k">Random</span></button>
-      </div>
-      <div class="toggles">
-        <button class="tk" id="tShuffle"><span class="lamp"></span><span class="k">Shuffle</span></button>
-        <button class="tk" id="tLock"><span class="lamp"></span><span class="k">Lock</span></button>
-        <button class="tk" id="tFav"><span class="lamp"></span><span class="k">Favorite</span></button>
-      </div>
+
+        <h1 class="title" id="pname">Connecting&hellip;</h1>
+
+        <div class="subline">
+          <span class="author" id="pauthor" hidden></span>
+          <span class="tags" id="ptags"></span>
+          <button type="button" class="pathtoggle" id="pathToggle" aria-expanded="false" aria-controls="ppath">
+            <span>Path</span><svg class="ic chev"><use href="#i-chevron"/></svg>
+          </button>
+        </div>
+        <code class="path mono" id="ppath" hidden></code>
+
+        <!-- Iconic media transport bar: Shuffle | Prev | Next | Random | Favorite -->
+        <div class="deck" aria-label="Transport">
+          <button type="button" class="ctl ctl-mode" id="tShuffle" role="switch" aria-checked="false" aria-label="Shuffle" title="Shuffle">
+            <svg class="ic"><use href="#i-shuffle"/></svg>
+          </button>
+          <button type="button" class="ctl ctl-step" id="btnPrev" aria-label="Previous preset" title="Previous (P)">
+            <svg class="ic"><use href="#i-prev"/></svg>
+          </button>
+          <button type="button" class="ctl ctl-primary" id="btnNext" aria-label="Next preset" title="Next (N)">
+            <svg class="ic"><use href="#i-next"/></svg>
+          </button>
+          <button type="button" class="ctl ctl-step" id="btnRandom" aria-label="Random preset" title="Random (R)">
+            <svg class="ic"><use href="#i-random"/></svg>
+          </button>
+          <button type="button" class="ctl ctl-mode" id="tFav" role="switch" aria-checked="false" aria-label="Favorite" title="Favorite (F)">
+            <svg class="ic"><use href="#i-star"/></svg>
+          </button>
+        </div>
+
+        <div class="utility-row">
+          <button type="button" class="ghost-action" id="tLock" role="switch" aria-checked="false">
+            <svg class="ic"><use href="#i-lock"/></svg><span>Lock</span>
+          </button>
+          <button type="button" class="ghost-action" id="btnEdit">
+            <svg class="ic"><use href="#i-code"/></svg><span>Edit in Workshop</span>
+          </button>
+          <button type="button" class="ghost-action danger" id="btnDislike">
+            <svg class="ic"><use href="#i-dislike"/></svg><span>Dislike</span>
+          </button>
+        </div>
+      </article>
+
+      <aside class="output-strip" aria-labelledby="quickTitle">
+        <h2 class="sr" id="quickTitle">Quick visuals</h2>
+
+        <div class="output-rows">
+          <div class="out-row out-row-bright">
+            <div class="bp-head">
+              <label for="qBright">Brightness</label>
+              <output class="num" data-out="brightness">--</output>
+            </div>
+            <input type="range" id="qBright" data-setting="brightness" data-unit="%" min="0.05" max="1" step="0.05">
+          </div>
+          <div class="out-row">
+            <span class="lbl" id="lqFlash">Reduce flashing</span>
+            <button type="button" class="switch" role="switch" aria-checked="false" data-setting="reduceFlashing" aria-labelledby="lqFlash"></button>
+          </div>
+          <div class="out-row out-row-tint">
+            <div class="out-tint-head">
+              <span class="lbl" id="lqTint">Screen tint<span class="tint-dot" aria-hidden="true"></span></span>
+              <button type="button" class="switch" role="switch" aria-checked="false" data-setting="tintEnabled" aria-labelledby="lqTint"></button>
+            </div>
+            <div class="tint-reveal"><div class="swatches" data-swatches></div></div>
+          </div>
+          <button type="button" class="out-row audio-row" data-goto="set">
+            <span class="audio-now">
+              <span class="lbl">Audio</span>
+              <span class="audio-val" data-audio-name>--</span>
+            </span>
+            <span class="link-action">Change<svg class="ic"><use href="#i-chevron"/></svg></span>
+          </button>
+        </div>
+      </aside>
     </div>
   </section>
 
   <!-- BROWSE -->
-  <section class="view" data-view="browse">
-    <input class="search" id="search" placeholder="search presets…">
-    <button class="browse-edit" id="btnCapture">✎ Edit current preset in Workshop</button>
-    <div id="browseList"></div>
+  <section class="view" data-view="browse" aria-label="Browse presets" hidden>
+    <div class="page-col">
+      <div class="toolbar">
+        <div class="search">
+          <svg class="ic"><use href="#i-search"/></svg>
+          <input type="search" id="search" placeholder="Search presets" aria-label="Search presets" autocomplete="off" spellcheck="false">
+          <button type="button" class="iconbtn sm" id="searchClear" aria-label="Clear search" hidden><svg class="ic"><use href="#i-x"/></svg></button>
+          <kbd class="kbd">/</kbd>
+        </div>
+        <span class="count num" id="resultCount" aria-live="polite"></span>
+        <div class="toolbar-actions">
+          <button type="button" class="ghost-action" id="jumpCurrent"><svg class="ic"><use href="#i-target"/></svg><span>Current</span></button>
+          <button type="button" class="ghost-action" id="editCurrent"><svg class="ic"><use href="#i-code"/></svg><span>Edit current</span></button>
+        </div>
+      </div>
+      <div id="browseList" class="list"></div>
+    </div>
   </section>
 
   <!-- FAVORITES -->
-  <section class="view" data-view="fav">
-    <div class="set flexrow">
-      <div><b>Shuffle favorites</b><div class="label mt">Restrict Next/Random to stars</div></div>
-      <div class="sw" id="favShuffle"></div>
+  <section class="view" data-view="fav" aria-label="Favorites" hidden>
+    <div class="page-col">
+      <div class="fav-head">
+        <div>
+          <span class="lbl" id="lFavShuffle">Shuffle favorites</span>
+          <p class="desc">Limit Next and Random to starred presets.</p>
+        </div>
+        <button type="button" class="switch" id="favShuffle" role="switch" aria-checked="false" aria-labelledby="lFavShuffle"></button>
+      </div>
+      <div class="toolbar">
+        <div class="search">
+          <svg class="ic"><use href="#i-search"/></svg>
+          <input type="search" id="favSearch" placeholder="Filter favorites" aria-label="Filter favorites" autocomplete="off" spellcheck="false">
+        </div>
+        <span class="count num" id="favCount" aria-live="polite"></span>
+      </div>
+      <div id="favList" class="list"></div>
+      <div class="empty" id="favEmpty" hidden>
+        <svg class="ic"><use href="#i-star"/></svg>
+        <p><b>No favorites yet</b><br>Star a preset in Browse, or tap the star on Now Playing.</p>
+      </div>
     </div>
-    <div class="chead"><span class="c">Starred</span><span class="ct" id="favCount">0</span></div>
-    <div id="favList"></div>
   </section>
 
   <!-- SETTINGS -->
-  <section class="view" data-view="set">
-    <div class="set"><div class="h"><b>Preset duration</b><span class="readout"><span id="vDur">—</span> s</span></div>
-      <div class="desc">How long each visual plays before switching.</div>
-      <input type="range" id="sDur" data-key="presetDuration" min="3" max="120" step="1"></div>
-    <div class="set"><div class="h"><b>Transition</b><span class="readout"><span id="vSoft">—</span> s</span></div>
-      <div class="desc">Blend time when a new preset takes over.</div>
-      <input type="range" id="sSoft" data-key="softCutDuration" min="0" max="10" step="0.5"></div>
-    <div class="set"><div class="h"><b>Beat sensitivity</b><span class="readout" id="vBeat">—</span></div>
-      <div class="desc">How strongly the visuals react to the audio.</div>
-      <input type="range" id="sBeat" data-key="beatSensitivity" min="0" max="2" step="0.05"></div>
-    <div class="set">
-      <div class="tg"><b>Hard cut</b><div class="sw" id="tHard"></div></div>
-      <div class="desc">Snap instantly to a new preset on loud beats.</div>
-      <div class="h mt"><span class="label">Sensitivity</span><span class="readout" id="vHardS">—</span></div>
-      <input type="range" id="sHardS" data-key="hardCutSensitivity" min="0" max="5" step="0.1">
-      <div class="h mt"><span class="label">Min duration</span><span class="readout"><span id="vHardD">—</span> s</span></div>
-      <input type="range" id="sHardD" data-key="hardCutDuration" min="0" max="60" step="1">
-    </div>
-    <div class="set"><div class="h"><b>FPS</b><span class="readout" id="vFps">—</span></div>
-      <div class="desc">Target frame rate on the display.</div>
-      <input type="range" id="sFps" data-key="fps" min="20" max="90" step="5">
-      <div class="tg"><span class="label">Aspect correction</span><div class="sw" id="tAspect"></div></div>
-      <div class="desc">Keep shapes proportioned to the screen.</div>
-    </div>
-    <div class="set">
-      <div class="tg"><b>Reduce flashing</b><div class="sw" id="tFlash"></div></div>
-      <div class="desc">Limits how fast the picture can brighten between frames, easing strobe-like presets. Softens the look a little.</div>
-      <div class="h mt"><span class="label">Strength</span><span class="readout" id="vFlash">—</span></div>
-      <input type="range" id="sFlash" data-key="flashStrength" min="0" max="1" step="0.05">
-    </div>
-    <div class="set"><div class="h"><b>Brightness</b><span class="readout"><span id="vBright">—</span>%</span></div>
-      <div class="desc">Dim the whole screen.</div>
-      <input type="range" id="sBright" data-key="brightness" min="0.1" max="1" step="0.05"></div>
-    <div class="set">
-      <div class="tg"><b>Screen tint</b><div class="sw" id="tTint"></div></div>
-      <div class="desc">Recolor everything to a single hue (true monochrome).</div>
-      <div class="h mt"><span class="label">Color</span><input type="color" id="tintColor" value="#00ff00" class="colorpick"></div>
-      <div class="swatches" id="tintSwatches">
-        <button class="swatch" data-color="#00ff00" style="background:#00ff00"></button>
-        <button class="swatch" data-color="#0080ff" style="background:#0080ff"></button>
-        <button class="swatch" data-color="#ff40c0" style="background:#ff40c0"></button>
-        <button class="swatch" data-color="#ffb000" style="background:#ffb000"></button>
-        <button class="swatch" data-color="#00e5e5" style="background:#00e5e5"></button>
-        <button class="swatch" data-color="#ff3030" style="background:#ff3030"></button>
-        <button class="swatch" data-color="#ffffff" style="background:#ffffff"></button>
-      </div>
-      <div class="h mt"><span class="label">Intensity</span><span class="readout"><span id="vTintS">—</span>%</span></div>
-      <input type="range" id="sTintS" data-key="tintStrength" min="0" max="1" step="0.05">
-    </div>
-    <div class="set">
-      <div class="tg"><b>Auto-skip slow presets</b><div class="sw" id="tAutoskip"></div></div>
-      <div class="desc">Skip presets that run below the FPS threshold; repeat offenders get blocked.</div>
-      <div class="h mt"><span class="label">FPS threshold</span><span class="readout" id="vAskFps">—</span></div>
-      <input type="range" id="sAskFps" data-key="autoskipFps" min="5" max="60" step="5">
-      <div class="h mt"><span class="label">Strikes before block</span><span class="readout" id="vAskStr">—</span></div>
-      <input type="range" id="sAskStr" data-key="autoskipStrikes" min="1" max="10" step="1">
-    </div>
-    <div class="set flexrow">
-      <div><b>Pack</b><div class="label mt" id="packName">—</div></div>
-      <select id="packs" class="packsel"></select>
-    </div>
-    <div class="set flexrow">
-      <div><b>Audio input</b><div class="label mt" id="audioName">—</div></div>
-      <button class="readout btnish" id="btnAudio">NEXT ›</button>
-    </div>
-    <div class="set flexrow" id="blockedRow" style="display:none">
-      <div><b>Blocked presets</b><div class="desc" style="margin:5px 0 0">Presets that hung the GPU and were auto-skipped. Cleared ones return on the next pack switch.</div></div>
-      <button class="readout btnish" id="btnClearBlock"><span id="blockedCount">0</span> · Clear</button>
-    </div>
-    <div class="set flexrow" id="dislikedRow" style="display:none">
-      <div><b>Disliked presets</b><div class="desc" style="margin:5px 0 0">Presets you disliked. Cleared ones return on the next pack switch.</div></div>
-      <button class="readout btnish" id="btnClearDislikes"><span id="dislikedCount">0</span> · Clear</button>
+  <section class="view" data-view="set" aria-label="Settings" hidden>
+    <div class="settings-grid">
+
+      <section class="card group" aria-labelledby="gPlay">
+        <h2 class="card-title" id="gPlay">Playback &amp; beat</h2>
+        <div class="field">
+          <div class="field-head"><label for="sDur">Preset duration</label><output class="num" data-out="presetDuration">--</output></div>
+          <input type="range" id="sDur" data-setting="presetDuration" data-unit="s" min="3" max="120" step="1">
+          <p class="desc">How long each visual plays before switching.</p>
+        </div>
+        <div class="field">
+          <div class="field-head"><label for="sSoft">Transition</label><output class="num" data-out="softCutDuration">--</output></div>
+          <input type="range" id="sSoft" data-setting="softCutDuration" data-unit="s" min="0" max="10" step="0.5">
+          <p class="desc">Blend time when a new preset takes over.</p>
+        </div>
+        <div class="field">
+          <div class="field-head"><label for="sBeat">Beat sensitivity</label><output class="num" data-out="beatSensitivity">--</output></div>
+          <input type="range" id="sBeat" data-setting="beatSensitivity" min="0" max="2" step="0.05">
+        </div>
+        <div class="row">
+          <div><span class="lbl" id="lHard">Hard cut</span><p class="desc">Snap to a new preset on loud beats.</p></div>
+          <button type="button" class="switch" role="switch" aria-checked="false" data-setting="hardCut" aria-labelledby="lHard"></button>
+        </div>
+        <div class="field sub">
+          <div class="field-head"><label for="sHardS">Sensitivity</label><output class="num" data-out="hardCutSensitivity">--</output></div>
+          <input type="range" id="sHardS" data-setting="hardCutSensitivity" min="0" max="5" step="0.1">
+        </div>
+        <div class="field sub">
+          <div class="field-head"><label for="sHardD">Min duration</label><output class="num" data-out="hardCutDuration">--</output></div>
+          <input type="range" id="sHardD" data-setting="hardCutDuration" data-unit="s" min="0" max="60" step="1">
+        </div>
+      </section>
+
+      <section class="card group" aria-labelledby="gVis">
+        <h2 class="card-title" id="gVis">Visual output</h2>
+        <div class="field">
+          <div class="field-head"><label for="sFps">Target FPS</label><output class="num" data-out="fps">--</output></div>
+          <input type="range" id="sFps" data-setting="fps" min="20" max="120" step="5">
+        </div>
+        <div class="row">
+          <div><span class="lbl" id="lAspect">Aspect correction</span><p class="desc">Keep shapes proportioned to the screen.</p></div>
+          <button type="button" class="switch" role="switch" aria-checked="false" data-setting="aspectCorrection" aria-labelledby="lAspect"></button>
+        </div>
+        <div class="field">
+          <div class="field-head"><label for="sBright">Brightness</label><output class="num" data-out="brightness">--</output></div>
+          <input type="range" id="sBright" data-setting="brightness" data-unit="%" min="0.05" max="1" step="0.05">
+        </div>
+        <div class="row">
+          <div><span class="lbl" id="lFlash">Reduce flashing</span><p class="desc">Limits how fast the picture can brighten between frames.</p></div>
+          <button type="button" class="switch" role="switch" aria-checked="false" data-setting="reduceFlashing" aria-labelledby="lFlash"></button>
+        </div>
+        <div class="field sub">
+          <div class="field-head"><label for="sFlash">Strength</label><output class="num" data-out="flashStrength">--</output></div>
+          <input type="range" id="sFlash" data-setting="flashStrength" min="0" max="1" step="0.05">
+        </div>
+        <div class="row">
+          <div><span class="lbl" id="lTint">Screen tint</span><p class="desc">Recolor everything to a single hue.</p></div>
+          <button type="button" class="switch" role="switch" aria-checked="false" data-setting="tintEnabled" aria-labelledby="lTint"></button>
+        </div>
+        <div class="tint-pick sub">
+          <label class="color" for="tintColor"><input type="color" id="tintColor" data-setting="tintColor" value="#00ff00"><span>Custom</span></label>
+          <div class="swatches" data-swatches></div>
+        </div>
+        <div class="field sub">
+          <div class="field-head"><label for="sTintS">Intensity</label><output class="num" data-out="tintStrength">--</output></div>
+          <input type="range" id="sTintS" data-setting="tintStrength" data-unit="%" min="0" max="1" step="0.05">
+        </div>
+        <div class="row">
+          <div><span class="lbl" id="lPreview">Live remote preview</span><p class="desc">Stream downscaled frames to the remote while open. Zero GPU cost when closed.</p></div>
+          <button type="button" class="switch" role="switch" aria-checked="true" data-setting="livePreview" aria-labelledby="lPreview"></button>
+        </div>
+      </section>
+
+      <section class="card group" aria-labelledby="gSafe">
+        <h2 class="card-title" id="gSafe">Safety &amp; auto-skip</h2>
+        <div class="row">
+          <div><span class="lbl" id="lSkip">Auto-skip slow presets</span><p class="desc">Skip presets below the FPS threshold; repeat offenders get blocked.</p></div>
+          <button type="button" class="switch" role="switch" aria-checked="false" data-setting="autoskipEnabled" aria-labelledby="lSkip"></button>
+        </div>
+        <div class="field sub">
+          <div class="field-head"><label for="sAskFps">FPS threshold</label><output class="num" data-out="autoskipFps">--</output></div>
+          <input type="range" id="sAskFps" data-setting="autoskipFps" min="5" max="60" step="5">
+        </div>
+        <div class="field sub">
+          <div class="field-head"><label for="sAskStr">Strikes before block</label><output class="num" data-out="autoskipStrikes">--</output></div>
+          <input type="range" id="sAskStr" data-setting="autoskipStrikes" min="1" max="10" step="1">
+        </div>
+        <div class="row">
+          <div><span class="lbl">Blocked presets <span class="badge num" id="blockedCount">0</span></span><p class="desc">Hung the GPU and were auto-skipped. Cleared ones return on the next pack switch.</p></div>
+          <button type="button" class="btn btn-sm" id="btnClearBlock"><svg class="ic"><use href="#i-trash"/></svg>Clear</button>
+        </div>
+        <div class="row">
+          <div><span class="lbl">Disliked presets <span class="badge num" id="dislikedCount">0</span></span><p class="desc">Cleared ones return on the next pack switch.</p></div>
+          <button type="button" class="btn btn-sm" id="btnClearDislikes"><svg class="ic"><use href="#i-trash"/></svg>Clear</button>
+        </div>
+      </section>
+
+      <section class="card group" aria-labelledby="gLib">
+        <h2 class="card-title" id="gLib">Library &amp; audio</h2>
+        <div class="field">
+          <div class="field-head"><label for="packs">Preset pack</label></div>
+          <div class="select"><select id="packs"></select><svg class="ic"><use href="#i-chevron-down"/></svg></div>
+        </div>
+        <div class="field">
+          <div class="field-head"><label for="audioSel">Audio input</label><span class="desc" data-audio-name>--</span></div>
+          <div class="select" id="audioSelWrap" hidden><select id="audioSel"></select><svg class="ic"><use href="#i-chevron-down"/></svg></div>
+          <button type="button" class="btn" id="btnAudioNext" hidden><svg class="ic"><use href="#i-audio"/></svg>Next input</button>
+        </div>
+      </section>
+
     </div>
   </section>
+</main>
+
+<!-- Mini player: below 960px, on every view except Now -->
+<div class="mini" id="mini" role="group" aria-label="Now playing">
+  <button type="button" class="mini-open" id="miniOpen" title="Open Now playing">
+    <span class="mini-art" aria-hidden="true"></span>
+    <span class="mini-text"><span class="mini-name" id="miniName">--</span><span class="mini-sub" id="miniSub"></span></span>
+  </button>
+  <button type="button" class="mini-btn" id="miniRandom" aria-label="Random preset"><svg class="ic"><use href="#i-random"/></svg></button>
+  <button type="button" class="mini-btn" id="miniNext" aria-label="Next preset"><svg class="ic"><use href="#i-next"/></svg></button>
 </div>
 
-<div id="editor" class="editor-overlay">
+<!-- WORKSHOP EDITOR -->
+<div class="editor" id="editor" role="dialog" aria-modal="true" aria-labelledby="edName" hidden>
   <div class="editor-head">
-    <button id="edClose" class="edbtn">‹ Close</button>
-    <span id="edName" class="edname">preset</span>
-    <div class="edactions">
-      <button id="edApply" class="edbtn accent">Apply</button>
-      <button id="edSave" class="edbtn">Save…</button>
+    <button type="button" class="btn btn-sm" id="edClose"><svg class="ic"><use href="#i-x"/></svg>Close</button>
+    <span class="edname mono" id="edName">preset.milk</span>
+    <span class="edstats mono" id="edStats"></span>
+    <div class="editor-actions">
+      <button type="button" class="btn btn-sm" id="edSave"><svg class="ic"><use href="#i-save"/></svg>Save</button>
+      <button type="button" class="btn btn-sm btn-primary" id="edApply" title="Ctrl+Enter"><svg class="ic"><use href="#i-bolt"/></svg>Apply<kbd class="kbd">Ctrl Enter</kbd></button>
     </div>
   </div>
-  <div id="edMsg" class="edmsg"></div>
-  <textarea id="edText" spellcheck="false" autocapitalize="off" autocorrect="off"></textarea>
+  <div class="edmsg" id="edMsg" role="status"></div>
+  <textarea id="edText" class="mono" spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="Preset source"></textarea>
 </div>
 
-<nav class="tabs">
-  <button class="tab on" data-t="now"><svg viewBox="0 0 24 24"><path d="M4 13l4-3 4 5 4-8 4 6"/></svg>Now</button>
-  <button class="tab" data-t="browse"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>Browse</button>
-  <button class="tab" data-t="fav"><svg viewBox="0 0 24 24"><path d="M12 3l2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.8 6.1 21l1.2-6.5L2.5 9.9 9 9z"/></svg>Favorites</button>
-  <button class="tab" data-t="set"><svg viewBox="0 0 24 24"><path d="M4 8h10M18 8h2M4 16h2M10 16h10"/><circle cx="15" cy="8" r="2.4"/><circle cx="8" cy="16" r="2.4"/></svg>Settings</button>
-</nav>
+<dialog id="saveDlg" aria-labelledby="saveTitle">
+  <form class="dlg" id="saveForm">
+    <h2 id="saveTitle">Save to workshop</h2>
+    <p class="desc">Saved as a new <span class="mono">.milk</span> file in the workshop folder.</p>
+    <input type="text" id="saveName" class="input mono" required autocomplete="off" spellcheck="false" aria-label="File name">
+    <p class="dlg-warn" id="saveWarn" role="alert" hidden>File already exists. Overwrite it?</p>
+    <div class="dlg-actions">
+      <button type="button" class="btn" id="saveCancel">Cancel</button>
+      <button type="submit" class="btn btn-primary" id="saveOk">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="authDlg" aria-labelledby="authTitle">
+  <form method="dialog" class="dlg">
+    <div class="dlg-icon"><svg class="ic"><use href="#i-key"/></svg></div>
+    <h2 id="authTitle">Access token required</h2>
+    <p class="desc">This Dropkick is protected. Enter the remote token from its config.</p>
+    <input type="password" id="authToken" class="input mono" required autocomplete="current-password" aria-label="Access token">
+    <div class="dlg-actions">
+      <button type="submit" class="btn btn-primary" value="ok">Connect</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
 
 <script src="app.js"></script>
 </body>
